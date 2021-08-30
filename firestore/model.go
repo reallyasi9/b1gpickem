@@ -78,6 +78,22 @@ type ModelPerformance struct {
 	// StdDev is the standard deviation of the prediction errors.
 	StdDev float64 `firestore:"std_dev"` // calculated
 
-	// ModelRef is a pointer to the Firestore model object it references for easy access.
-	ModelRef *fs.DocumentRef `firestore:"model"` // discovered
+	// Model is a pointer to the Firestore model object it references for easy access.
+	Model *fs.DocumentRef `firestore:"model"` // discovered
+}
+
+// Prediction is a prediction made by a certain Model.
+type Prediction struct {
+	// HomeTeam is a reference to the Firestore Team the model thinks is the home team for the game.
+	HomeTeam *fs.DocumentRef `firestore:"home"`
+
+	// AwayTeam is a reference to the Firestore Team the model thinks is the away team for the game.
+	AwayTeam *fs.DocumentRef `firestore:"road"`
+
+	// NeutralSite flags if the model thinks the teams are playing at a neutral site.
+	NeutralSite bool `firestore:"neutral"`
+
+	// Spread is the predicted number of points in favor of `HomeTeam`.
+	// Negative points reflect a prediction of `AwayTeam` winning.
+	Spread float64 `firestore:"spread"`
 }
