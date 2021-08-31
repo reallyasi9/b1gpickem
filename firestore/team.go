@@ -17,7 +17,7 @@ type Team struct {
 	// - MICH (University of Michigan Wolverines)
 	// - OSU (The Ohio State University Buckeyes)
 	// - CINCY (University of Cincinnati Bearcats)
-	LukeNames []string `firestore:"name_luke"`
+	LukeNames []string `firestore:"name_luke,omitempty"`
 
 	// OtherNames are the names that various other documents give to the team.
 	// These are collected over time as various sports outlets call the team different official or unofficial names.
@@ -25,7 +25,7 @@ type Team struct {
 	// - [Michigan] (University of Michigan Wolverines)
 	// - [Ohio St., Ohio State] (The Ohio State University Buckeyes)
 	// - [Pitt, Pittsburgh] (University of Pittsburgh Panthers)
-	OtherNames []string `firestore:"other_names"`
+	OtherNames []string `firestore:"other_names,omitempty"`
 
 	// School is the unofficial, unabbreviated name of the school used for display purposes.
 	// Examples include:
