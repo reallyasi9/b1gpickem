@@ -2,10 +2,7 @@ module github.com/reallyasi9/b1gpickem
 
 go 1.17
 
-require (
-	cloud.google.com/go/firestore v1.5.0
-	google.golang.org/api v0.54.0
-)
+require cloud.google.com/go/firestore v1.5.0
 
 require (
 	cloud.google.com/go v0.90.0 // indirect
@@ -23,6 +20,7 @@ require (
 	golang.org/x/text v0.3.6 // indirect
 	golang.org/x/tools v0.1.5 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
+	google.golang.org/api v0.54.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20210805201207-89edb61ffb67 // indirect
 	google.golang.org/grpc v1.39.1 // indirect
