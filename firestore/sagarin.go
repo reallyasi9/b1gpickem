@@ -12,10 +12,10 @@ type SagarinModelParameters struct {
 	Timestamp time.Time `firestore:"timestamp,serverTimestamp"`
 
 	// TimeDownload is the time the model parameters were downloaded
-	TimeDownloaded time.Time `firestore:"time_downloaded"`
+	TimeDownloaded time.Time `firestore:"time_downloaded,omitempty"`
 
 	// URL is the URL that was scraped
-	URL string `firestore:"url_scraped"`
+	URL string `firestore:"url_scraped,omitempty"`
 
 	// RatingHomeAdvantage is the number of points the home team for a given contest should be given if using the default "ratings" method for prediction.
 	RatingHomeAdvantage float64 `firestore:"home_advantage_rating"`
