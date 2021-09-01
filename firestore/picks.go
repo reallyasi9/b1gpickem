@@ -179,7 +179,7 @@ type StreakPick struct {
 }
 
 // BuildSlateRow creates a row of strings for direct output to a slate spreadsheet.
-func (sg *StraightUpPick) BuildSlateRow(ctx context.Context) ([]string, error) {
+func (sg StraightUpPick) BuildSlateRow(ctx context.Context) ([]string, error) {
 	// game, noise, pick, spread, notes, expected value
 	output := make([]string, 6)
 
@@ -278,7 +278,7 @@ func (sg *StraightUpPick) BuildSlateRow(ctx context.Context) ([]string, error) {
 }
 
 // BuildSlateRow creates a row of strings for direct output to a slate spreadsheet.
-func (sg *NoisySpreadPick) BuildSlateRow(ctx context.Context) ([]string, error) {
+func (sg NoisySpreadPick) BuildSlateRow(ctx context.Context) ([]string, error) {
 	// game, noise, pick, spread, notes, expected value
 	output := make([]string, 6)
 
@@ -373,7 +373,7 @@ func (sg *NoisySpreadPick) BuildSlateRow(ctx context.Context) ([]string, error) 
 }
 
 // BuildSlateRow creates a row of strings for direct output to a slate spreadsheet.
-func (sg *SuperDogPick) BuildSlateRow(ctx context.Context) ([]string, error) {
+func (sg SuperDogPick) BuildSlateRow(ctx context.Context) ([]string, error) {
 
 	underDoc, err := sg.Underdog.Get(ctx)
 	if err != nil {
@@ -426,7 +426,7 @@ func (sg *SuperDogPick) BuildSlateRow(ctx context.Context) ([]string, error) {
 
 // BuildSlateRow creates a row of strings for direct output to a slate spreadsheet.
 // TODO: still not printing DDs correctly.
-func (sg *StreakPick) BuildSlateRow(ctx context.Context) ([]string, error) {
+func (sg StreakPick) BuildSlateRow(ctx context.Context) ([]string, error) {
 
 	pickedTeams := make([]Team, len(sg.Picks))
 	for i, teamRef := range sg.Picks {
