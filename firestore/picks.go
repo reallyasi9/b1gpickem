@@ -70,8 +70,6 @@ type StraightUpPick struct {
 
 	// Row is the row in the slate whence the pick originated.
 	Row int `firestore:"row"`
-
-	SlateRowBuilder
 }
 
 // NoisySpreadPick is a pick on a noisy spread game.
@@ -114,8 +112,6 @@ type NoisySpreadPick struct {
 
 	// Row is the row in the slate whence the pick originated.
 	Row int `firestore:"row"`
-
-	SlateRowBuilder
 }
 
 // SuperDogPick is a pick on a superdog spread game.
@@ -159,8 +155,6 @@ type SuperDogPick struct {
 
 	// Row is the row in the slate whence the pick originated.
 	Row int `firestore:"row"`
-
-	SlateRowBuilder
 }
 
 // StreakPick is a pick for Beat the Streak (BTS).
@@ -174,8 +168,6 @@ type StreakPick struct {
 
 	// PredictedProbability is the probability of beating the streak.
 	PredictedProbability float64 `firestore:"predicted_probability"`
-
-	SlateRowBuilder
 }
 
 // BuildSlateRow creates a row of strings for direct output to a slate spreadsheet.
@@ -408,7 +400,7 @@ func (sg SuperDogPick) BuildSlateRow(ctx context.Context) ([]string, error) {
 
 	if sg.Pick != nil {
 		output[2] = underdog.Name
-		if underdog.Name != overdog.Name {
+		if underdog.Name == overdog.Name {
 			output[2] = underdog.School
 		}
 	}
