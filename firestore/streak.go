@@ -84,3 +84,31 @@ type StreakPrediction struct {
 	// Weeks are the picked streak winners for all future weeks.
 	Weeks []StreakWeek `firestore:"weeks"`
 }
+
+// StreakTeamsRemainingWeek is a container for the remaining teams by picker.
+type StreakTeamsRemainingWeek struct {
+	// Season is a reference to the season of the pick.
+	Season *firestore.DocumentRef `firestore:"season"`
+
+	// Week is the week number of the pick (0 is just before the first week of the season).
+	Week int `firestore:"week"`
+
+	// Timestamp is the time the document was written to Firestore.
+	Timestamp time.Time `firestore:"timestamp,serverTimestamp"`
+}
+
+// StreakTeamsRemaining represents the remaining teams and pick types per picker
+type StreakTeamsRemaining struct {
+	// Picker is a reference to the picker.
+	Picker *firestore.DocumentRef `firestore:"picker"`
+
+	// TeamsRemaining is a list of references to remaining teams for that picker.
+	TeamsRemaining []*firestore.DocumentRef `firestore:"remaining"`
+
+	// PickTypesRemaining is an array slice of number of pick types remaining for the user.
+	// The index of the array represents the number of picks per week for that type.
+	// For instance, the first (index 0) element in the array represents the number of "bye" picks the user has remaining,
+	// while the second (index 1) element represents the number of "single" picks remaining,
+	// and the third (index 2) represents the number of "double down" weeks remaining.
+	PickTypesRemaining []int `firestore:"pick_types_remaining"`
+}
