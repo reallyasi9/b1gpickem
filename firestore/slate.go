@@ -1,6 +1,8 @@
 package firestore
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -43,6 +45,52 @@ type Game struct {
 
 	// Row is the row in the original slate where the game was found when parsed. It is the row that will contain the pick when picks are made.
 	Row int `firestore:"row"`
+}
+
+// String implements the Stringer interface.
+func (g Game) String() string {
+	if g.Superdog {
+		return fmt.Sprintf("%s over %s (%d points)", g.Underdog.ID, g.Overdog.ID, g.Value)
+	}
+
+	var sb strings.Builder
+	if g.GOTW {
+		sb.WriteString("** ")
+	}
+
+	if g.AwayRank > 0 {
+		sb.WriteString(fmt.Sprintf("#%d ", g.AwayRank))
+	}
+
+	sb.WriteString(g.AwayTeam.ID)
+
+	if g.NeutralSite {
+		sb.WriteString(" vs. ")
+	} else {
+		sb.WriteString(" @ ")
+	}
+
+	if g.HomeRank > 0 {
+		sb.WriteString(fmt.Sprintf("#%d ", g.HomeRank))
+	}
+
+	sb.WriteString(g.HomeTeam.ID)
+
+	if g.GOTW {
+		sb.WriteString(" **")
+	}
+
+	if g.NoisySpread != 0 {
+		favorite := g.HomeTeam.ID
+		ns := g.NoisySpread
+		if ns < 0 {
+			favorite = g.AwayTeam.ID
+			ns *= -1
+		}
+		sb.WriteString(fmt.Sprintf(" %s by ≥ %d", favorite, ns))
+	}
+
+	return sb.String()
 }
 
 // Slate represents how a slate is stored in Firestore.
