@@ -87,7 +87,7 @@ func (g Game) String() string {
 			favorite = g.AwayTeam.ID
 			ns *= -1
 		}
-		sb.WriteString(fmt.Sprintf(" %s by ≥ %d", favorite, ns))
+		sb.WriteString(fmt.Sprintf(", %s by ≥ %d", favorite, ns))
 	}
 
 	return sb.String()
