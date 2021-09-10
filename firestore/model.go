@@ -61,7 +61,7 @@ type ModelPerformance struct {
 	Wins int `firestore:"suw"`
 
 	// Losses is the number of incorrectly predicted game outcomes. Equal to `GamesPredicted - Wins`.
-	Losses int `firestore:"wul"`
+	Losses int `firestore:"sul"`
 
 	// WinsATS are the wins "Against The Spread". It is the number of games in which the model correctly predicts whether the
 	// difference in scores is on one side or the other of the opening line.
