@@ -9,6 +9,7 @@ import (
 
 type Game struct {
 	ID           uint64    `json:"id"`
+	Week         int       `json:"week"`
 	StartTime    time.Time `json:"start_date"`
 	StartTimeTBD bool      `json:"start_time_tbd"`
 	NeutralSite  bool      `json:"neutral_site"`
