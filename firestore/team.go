@@ -1,23 +1,25 @@
 package firestore
 
+import "cloud.google.com/go/firestore"
+
 // Team represents an NCAA football team.
 type Team struct {
-	// Name4 is a short, capitalized abbreviation of the team's name.
+	// Abbreviation is a short, capitalized abbreviation of the team's name.
 	// By convention, it is at most 4 characters long. There is no authoritative list of Name4 names,
 	// but traditionally they have been chosen to match the abbreviated names that are used by ESPN.
 	// Examples include:
 	// - MICH (University of Michigan Wolverines)
 	// - OSU (The Ohio State University Buckeyes)
 	// - M-OH (Miami University of Ohio RedHawks)
-	Name4 string `firestore:"name_4"`
+	Abbreviation string `firestore:"abbreviation"`
 
-	// LukeName are capitalized abbreviations that Luke Henkel has given to the team.
+	// ShortNames are capitalized abbreviations that Luke Heinkel has given to the team.
 	// There is no authoritative list of these names, and they are not necessarily consistent over time (hence the array slice).
 	// Examples include:
 	// - MICH (University of Michigan Wolverines)
 	// - OSU (The Ohio State University Buckeyes)
 	// - CINCY (University of Cincinnati Bearcats)
-	LukeNames []string `firestore:"name_luke,omitempty"`
+	ShortNames []string `firestore:"short_names"`
 
 	// OtherNames are the names that various other documents give to the team.
 	// These are collected over time as various sports outlets call the team different official or unofficial names.
@@ -34,10 +36,19 @@ type Team struct {
 	// - Southern California (University of Southern California Trojans)
 	School string `firestore:"school"`
 
-	// Name is the official nickname of the team.
+	// Mascot is the official nickname of the team.
 	// Examples include:
 	// - Wolverines (University of Michigan Wolverines)
 	// - Buckeyes (The Ohio State University Buckeyes)
 	// - Chanticleers (Coastal Carolina Chanticleers)
-	Name string `firestore:"team"`
+	Mascot string `firestore:"mascot"`
+
+	// Colors are the team colors in HTML RGB format ("#RRGGBB").
+	Colors []string `firestore:"colors"`
+
+	// Logos are links to logos, typically in size order (smallest first).
+	Logos []string `firestore:"logos"`
+
+	// Venue is a reference to a Venue document.
+	Venue *firestore.DocumentRef `firestore:"venue"`
 }

@@ -1,6 +1,11 @@
 package main
 
-import "time"
+import (
+	"strings"
+	"time"
+
+	"github.com/reallyasi9/b1gpickem/firestore"
+)
 
 type Game struct {
 	ID           uint64    `json:"id"`
@@ -22,14 +27,48 @@ type Team struct {
 	AltName1     *string  `json:"alt_name1"`
 	AltName2     *string  `json:"alt_name2"`
 	AltName3     *string  `json:"alt_name3"`
-	Conference   *string  `json:"conference"`
-	Division     *string  `json:"division"`
 	Color        *string  `json:"color"`
 	AltColor     *string  `json:"alt_color"`
 	Logos        []string `json:"logos"`
 	Location     struct {
 		VenueID *uint64 `json:"venue_id"`
 	}
+}
+
+func appendNonNilStrings(s []string, vals ...*string) []string {
+	for _, v := range vals {
+		if v == nil {
+			continue
+		}
+		s = append(s, *v)
+	}
+	return s
+}
+
+func coalesceString(s *string, replacement string) string {
+	if s == nil || *s == "" {
+		return replacement
+	}
+	return *s
+}
+
+// ToFirestore does not link the Venue--that has to be done with an external lookup.
+func (t Team) ToFirestore() (uint64, firestore.Team) {
+	otherNames := make([]string, 0)
+	otherNames = appendNonNilStrings(otherNames, t.Mascot, t.AltName1, t.AltName2, t.AltName3)
+	colors := make([]string, 0)
+	colors = appendNonNilStrings(colors, t.Color, t.AltColor)
+
+	abbr := coalesceString(t.Abbreviation, strings.ToUpper(t.School))
+	ft := firestore.Team{
+		Abbreviation: coalesceString(t.Abbreviation, strings.ToUpper(t.School)),
+		ShortNames:   []string{abbr},
+		OtherNames:   otherNames,
+		School:       t.School,
+		Mascot:       coalesceString(t.Mascot, "Football Team"),
+		Colors:       colors,
+	}
+	return t.ID, ft
 }
 
 type Venues struct {

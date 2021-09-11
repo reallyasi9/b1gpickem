@@ -42,6 +42,20 @@ func init() {
 }
 
 func main() {
+	parseCommandLine()
+
+	client := http.DefaultClient
+
+	teams, err := getTeams(client, APIKey)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Loaded %d teams\n", len(teams))
+	fmt.Printf("First team:\n%+v\nLast team:\n%+v", teams[0], teams[len(teams)-1])
+}
+
+func parseCommandLine() {
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -57,19 +71,9 @@ func main() {
 	if ProjectID == "" {
 		fmt.Println("-project not given and environment variable GCP_PROJECT not found: this will probably fail.")
 	}
-
-	client := http.DefaultClient
-
-	teams, err := GetTeams(client, APIKey)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("Loaded %d teams\n", len(teams))
-	fmt.Printf("First team:\n%+v\nLast team:\n%+v", teams[0], teams[len(teams)-1])
 }
 
-func GetTeams(client *http.Client, key string) ([]Team, error) {
+func getTeams(client *http.Client, key string) ([]Team, error) {
 	req, err := http.NewRequest("GET", "https://api.collegefootballdata.com/teams", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build teams request: %v", err)
