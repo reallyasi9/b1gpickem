@@ -114,7 +114,7 @@ func (g Game) BuildSlateRow(ctx context.Context) ([]string, error) {
 		sb.WriteString(fmt.Sprintf("#%d ", rank1))
 	}
 
-	sb.WriteString(team1.LukeNames[0])
+	sb.WriteString(team1.ShortNames[0])
 
 	if g.Superdog {
 		sb.WriteString(" over ")
@@ -149,7 +149,7 @@ func (g Game) BuildSlateRow(ctx context.Context) ([]string, error) {
 		if ns < 0 {
 			ns = -ns
 		}
-		output[1] = fmt.Sprintf("Enter %s iff you predict %s wins by at least %d points.", favorite.LukeNames[0], favorite.LukeNames[0], ns)
+		output[1] = fmt.Sprintf("Enter %s iff you predict %s wins by at least %d points.", favorite.ShortNames[0], favorite.ShortNames[0], ns)
 	} else if !g.Superdog {
 		output[1] = "Enter name of predicted winner"
 	}
