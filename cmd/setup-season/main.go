@@ -7,7 +7,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
+
+	"github.com/reallyasi9/b1gpickem/firestore"
 )
 
 // APIKey is a key from collegefootballdata.com
@@ -18,6 +21,9 @@ var ProjectID string
 
 // UpdateWeek, if set, will just update one week's worth of games rather than replacing the entire dataset in Firestore.
 var UpdateWeek int
+
+// Season is the year of the start of the season.
+var Season int
 
 func usage() {
 	fmt.Fprintf(flag.CommandLine.Output(), `Usage: setup-season [flags] <Season>
@@ -46,13 +52,36 @@ func main() {
 
 	client := http.DefaultClient
 
+	venues, err := getVenues(client, APIKey)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Loaded %d venues\n", len(venues))
+	// convert to map keyed by ID for easy lookup
+	venueLookup := make(map[uint64]firestore.Venue)
+	for _, venue := range venues {
+		id, v := venue.ToFirestore()
+		venueLookup[id] = v
+	}
+
 	teams, err := getTeams(client, APIKey)
 	if err != nil {
 		panic(err)
 	}
-
 	fmt.Printf("Loaded %d teams\n", len(teams))
-	fmt.Printf("First team:\n%+v\nLast team:\n%+v", teams[0], teams[len(teams)-1])
+	// convert to map keyed by ID for easy lookup
+	teamLookup := make(map[uint64]firestore.Team)
+	for _, team := range teams {
+		id, t := team.ToFirestore()
+		teamLookup[id] = t
+	}
+
+	games, err := getGames(client, APIKey, Season, UpdateWeek)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Loaded %d games\n", len(games))
+
 }
 
 func parseCommandLine() {
@@ -71,25 +100,40 @@ func parseCommandLine() {
 	if ProjectID == "" {
 		fmt.Println("-project not given and environment variable GCP_PROJECT not found: this will probably fail.")
 	}
+
+	var err error // avoid shadowing
+	Season, err = strconv.Atoi(flag.Arg(0))
+	if err != nil {
+		panic(err)
+	}
 }
 
-func getTeams(client *http.Client, key string) ([]Team, error) {
-	req, err := http.NewRequest("GET", "https://api.collegefootballdata.com/teams", nil)
+func doRequest(client *http.Client, key string, url string) ([]byte, error) {
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build teams request: %v", err)
+		return nil, fmt.Errorf("failed to build request: %v", err)
 	}
 	req.Header.Add("accept", "application/json")
 	req.Header.Add("Authorization", "Bearer "+key)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to do teams request: %v", err)
+		return nil, fmt.Errorf("failed to do request: %v", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read teams response body: %v", err)
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	return body, nil
+}
+
+func getTeams(client *http.Client, key string) ([]Team, error) {
+	body, err := doRequest(client, key, "https://api.collegefootballdata.com/teams")
+	if err != nil {
+		return nil, fmt.Errorf("failed to do teams request: %v", err)
 	}
 
 	var teams []Team
@@ -99,4 +143,38 @@ func getTeams(client *http.Client, key string) ([]Team, error) {
 	}
 
 	return teams, nil
+}
+
+func getVenues(client *http.Client, key string) ([]Venue, error) {
+	body, err := doRequest(client, key, "https://api.collegefootballdata.com/venues")
+	if err != nil {
+		return nil, fmt.Errorf("failed to do venues request: %v", err)
+	}
+
+	var venues []Venue
+	err = json.Unmarshal(body, &venues)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal venues response body: %v", err)
+	}
+
+	return venues, nil
+}
+
+func getGames(client *http.Client, key string, year, week int) ([]Game, error) {
+	query := fmt.Sprintf("?year=%d", year)
+	if week > 0 {
+		query += fmt.Sprintf("&week=%d", week)
+	}
+	body, err := doRequest(client, key, "https://api.collegefootballdata.com/games"+query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to do game request: %v", err)
+	}
+
+	var games []Game
+	err = json.Unmarshal(body, &games)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal games response body: %v", err)
+	}
+
+	return games, nil
 }

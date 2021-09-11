@@ -9,14 +9,27 @@ import (
 
 type Game struct {
 	ID           uint64    `json:"id"`
-	StartDate    time.Time `json:"start_date"`
+	StartTime    time.Time `json:"start_date"`
 	StartTimeTBD bool      `json:"start_time_tbd"`
 	NeutralSite  bool      `json:"neutral_site"`
 	VenueID      uint64    `json:"venue_id"`
-	HomeID       uint64    `json:"home_team"`
-	AwayID       uint64    `json:"away_team"`
+	HomeID       uint64    `json:"home_id"`
+	AwayID       uint64    `json:"away_id"`
 	HomePoints   *int      `json:"home_points"`
 	AwayPoints   *int      `json:"away_points"`
+}
+
+// ToFirestore does not link the teams--that has to be done with an external lookup.
+// The same goes for the venue.
+func (g Game) ToFirestore() (uint64, firestore.Game) {
+	fg := firestore.Game{
+		NeutralSite:  g.NeutralSite,
+		StartTime:    g.StartTime,
+		StartTimeTBD: g.StartTimeTBD,
+		HomePoints:   g.HomePoints,
+		AwayPoints:   g.AwayPoints,
+	}
+	return g.ID, fg
 }
 
 type Team struct {
@@ -71,9 +84,9 @@ func (t Team) ToFirestore() (uint64, firestore.Team) {
 	return t.ID, ft
 }
 
-type Venues struct {
+type Venue struct {
 	ID          uint64 `json:"id"`
-	Name        string `json:"string"`
+	Name        string `json:"name"`
 	Capacity    int    `json:"capacity"`
 	Grass       bool   `json:"grass"`
 	City        string `json:"city"`
@@ -87,4 +100,25 @@ type Venues struct {
 	Year     int    `json:"year"`
 	Dome     bool   `json:"dome"`
 	Timezone string `json:"timezone"`
+}
+
+func (v Venue) ToFirestore() (uint64, firestore.Venue) {
+	latlon := make([]float64, 0)
+	if v.Location.X != 0 || v.Location.Y != 0 {
+		latlon = []float64{v.Location.Y, v.Location.X}
+	}
+	fv := firestore.Venue{
+		Name:        v.Name,
+		Capacity:    v.Capacity,
+		Grass:       v.Grass,
+		City:        v.City,
+		State:       v.City,
+		Zip:         v.Zip,
+		CountryCode: v.CountryCode,
+		LatLon:      latlon,
+		Year:        v.Year,
+		Dome:        v.Dome,
+		Timezone:    v.Timezone,
+	}
+	return v.ID, fv
 }

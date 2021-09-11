@@ -108,7 +108,7 @@ func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 	if gameDoc, err = p.Game.Get(ctx); err != nil {
 		return nil, err
 	}
-	var game Game
+	var game SlateGame
 	if err = gameDoc.DataTo(&game); err != nil {
 		return nil, err
 	}

@@ -4,12 +4,40 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/firestore"
 )
 
-// Game is a game's data for storing picks in Firestore.
+// Game is a ground truth game.
 type Game struct {
+	// HomeTeam is the nominal home team in the game.
+	HomeTeam *firestore.DocumentRef `firestore:"home_team"`
+
+	// AwayTeam is the nominal away team in the game.
+	AwayTeam *firestore.DocumentRef `firestore:"away_team"`
+
+	// StartTime is the nominal kickoff time of the game.
+	StartTime time.Time `firestore:"start_time"`
+
+	// StartTimeTBD is a flag that reports whether or not `StartTime` can be trusted.
+	StartTimeTBD bool `firestore:"start_time_tbd"`
+
+	// NeutralSite is true if the game is played at neither the home nor away team's venue.
+	NeutralSite bool `firestore:"neutral_site"`
+
+	// Venue is the venue of the game.
+	Venue *firestore.DocumentRef `jsfirestoreon:"venue"`
+
+	// HomePoints is the number of points earned by the home team at end of game.
+	HomePoints *int `firestore:"home_points"`
+
+	// AwayPoints is the number of points earned by the away team at end of game.
+	AwayPoints *int `firestore:"away_points"`
+}
+
+// Game is a game's data for storing picks in Firestore.
+type SlateGame struct {
 	// Teams are references to the teams playing in the game.
 	Teams []*firestore.DocumentRef `firestore:"teams"`
 
@@ -34,6 +62,9 @@ type Game struct {
 	// NeutralSite is true if the slate thinks this game takes place at a neutral site.
 	NeutralSite bool `firestore:"neutral_site"`
 
+	// Venue is a reference to a Venue document for this game.
+	Venue *firestore.DocumentRef `firestore:"venue"`
+
 	// NoisySpread is the spread against which the pickers are picking this game. A value of zero means a straight pick. Positive values favor `HomeTeam`.
 	NoisySpread int `firestore:"noisy_spread"`
 
@@ -41,8 +72,50 @@ type Game struct {
 	Predictions map[string]*firestore.DocumentRef `firestore:"predictions"`
 }
 
+// String implements the Stringer interface.
+func (g SlateGame) String() string {
+	if g.Superdog {
+		return fmt.Sprintf("%s over %s (%d points)", g.Teams[1-g.FavoredIndex].ID, g.Teams[g.FavoredIndex].ID, g.Value)
+	}
+
+	var sb strings.Builder
+	if g.GOTW {
+		sb.WriteString("** ")
+	}
+
+	if g.Ranks[0] > 0 {
+		sb.WriteString(fmt.Sprintf("#%d ", g.Ranks[0]))
+	}
+
+	sb.WriteString(g.Teams[0].ID)
+
+	if g.NeutralSite {
+		sb.WriteString(" n ")
+	} else if g.HomeIndex == 1 {
+		sb.WriteString(" @ ")
+	} else {
+		sb.WriteString(" v ")
+	}
+
+	if g.Ranks[1] > 0 {
+		sb.WriteString(fmt.Sprintf("#%d ", g.Ranks[1]))
+	}
+
+	sb.WriteString(g.Teams[1].ID)
+
+	if g.GOTW {
+		sb.WriteString(" **")
+	}
+
+	if g.NoisySpread != 0 {
+		sb.WriteString(fmt.Sprintf(", %s by ≥ %d", g.Teams[g.FavoredIndex].ID, g.NoisySpread))
+	}
+
+	return sb.String()
+}
+
 // BuildSlateRow creates a row of strings for direct output to a slate spreadsheet.
-func (g Game) BuildSlateRow(ctx context.Context) ([]string, error) {
+func (g SlateGame) BuildSlateRow(ctx context.Context) ([]string, error) {
 	// error checks
 	if len(g.Teams) != 2 {
 		return nil, fmt.Errorf("illegal number of teams %d", len(g.Teams))

@@ -1,54 +1,10 @@
 package firestore
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
 )
-
-// String implements the Stringer interface.
-func (g Game) String() string {
-	if g.Superdog {
-		return fmt.Sprintf("%s over %s (%d points)", g.Teams[1-g.FavoredIndex].ID, g.Teams[g.FavoredIndex].ID, g.Value)
-	}
-
-	var sb strings.Builder
-	if g.GOTW {
-		sb.WriteString("** ")
-	}
-
-	if g.Ranks[0] > 0 {
-		sb.WriteString(fmt.Sprintf("#%d ", g.Ranks[0]))
-	}
-
-	sb.WriteString(g.Teams[0].ID)
-
-	if g.NeutralSite {
-		sb.WriteString(" n ")
-	} else if g.HomeIndex == 1 {
-		sb.WriteString(" @ ")
-	} else {
-		sb.WriteString(" v ")
-	}
-
-	if g.Ranks[1] > 0 {
-		sb.WriteString(fmt.Sprintf("#%d ", g.Ranks[1]))
-	}
-
-	sb.WriteString(g.Teams[1].ID)
-
-	if g.GOTW {
-		sb.WriteString(" **")
-	}
-
-	if g.NoisySpread != 0 {
-		sb.WriteString(fmt.Sprintf(", %s by ≥ %d", g.Teams[g.FavoredIndex].ID, g.NoisySpread))
-	}
-
-	return sb.String()
-}
 
 // Slate represents how a slate is stored in Firestore.
 type Slate struct {
