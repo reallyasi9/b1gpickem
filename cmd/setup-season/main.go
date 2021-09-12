@@ -64,6 +64,18 @@ func main() {
 
 	httpClient := http.DefaultClient
 
+	weeks, err := getWeeks(httpClient, APIKey, Season)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Loaded %d weeks\n", len(weeks))
+	// convert to map keyed by week number for easy lookup
+	weekLookup := make(map[int]firestore.Week)
+	for _, week := range weeks {
+		w := week.ToFirestore()
+		weekLookup[w.Number] = w
+	}
+
 	venues, err := getVenues(httpClient, APIKey)
 	if err != nil {
 		panic(err)
@@ -95,14 +107,14 @@ func main() {
 	fmt.Printf("Loaded %d games\n", len(games))
 	// convert to map keyed by ID for easy lookup
 	// but also by week number for easy writing
-	weekLookup := make(map[int]map[uint64]firestore.Game)
+	gameLookup := make(map[int]map[uint64]firestore.Game)
 	for _, game := range games {
 		id, g := game.ToFirestore()
 		var gw map[uint64]firestore.Game
 		var ok bool
-		if gw, ok = weekLookup[game.Week]; !ok {
-			weekLookup[game.Week] = make(map[uint64]firestore.Game)
-			gw = weekLookup[game.Week]
+		if gw, ok = gameLookup[game.Week]; !ok {
+			gameLookup[game.Week] = make(map[uint64]firestore.Game)
+			gw = gameLookup[game.Week]
 		}
 		gw[id] = g
 	}
@@ -110,23 +122,31 @@ func main() {
 	// set everything up to write to firestore
 	seasonRef := fsClient.Collection("seasons").Doc(strconv.Itoa(Season))
 	venueRefs := prepVenues(fsClient, seasonRef, venueLookup)
-	teamRefs, err := prepTeams(fsClient, seasonRef, teamLookup, teams, venueRefs)
+	teamRefs, teamsByAbbreviation, teamsByShort, teamsByOther, err := prepTeams(fsClient, seasonRef, teamLookup, teams, venueRefs)
 	if err != nil {
 		panic(err)
 	}
 	weekRefs := prepWeeks(fsClient, seasonRef, weekLookup)
 	gameRefs := make(map[int]map[uint64]*fs.DocumentRef)
 	for week, wr := range weekRefs {
-		gameRefMap, err := prepGames(fsClient, wr, weekLookup[week], games, venueRefs, teamRefs)
+		gameRefMap, err := prepGames(fsClient, wr, gameLookup[week], games, venueRefs, teamRefs)
 		if err != nil {
 			panic(err)
 		}
 		gameRefs[week] = gameRefMap
 	}
+	updateWeeks(weekLookup, gameRefs)
+	season := firestore.Season{
+		Year:                Season,
+		StartTime:           weeks[1].FirstGameStart,
+		TeamsByOtherName:    teamsByOther,
+		TeamsByShortName:    teamsByShort,
+		TeamsByAbbreviation: teamsByAbbreviation,
+	}
 
 	if DryRun {
 		fmt.Println("DRY RUN: would write the following to firestore:")
-		fmt.Printf("Season:\n%s\n---\n", seasonRef.Path)
+		fmt.Printf("Season:\n%s: %+v\n---\n", seasonRef.Path, season)
 		fmt.Println("Venues:")
 		for id := range venueRefs {
 			fmt.Printf("%s: %+v\n", venueRefs[id].Path, venueLookup[id])
@@ -139,15 +159,46 @@ func main() {
 		fmt.Println("---")
 		fmt.Println("Weeks:")
 		for week, ref := range weekRefs {
-			fmt.Printf("%s\n", ref.Path)
-			fmt.Println("\tGames:")
+			fmt.Printf("%s: %+v\n", ref.Path, weeks[week])
+			fmt.Println("Games:")
 			for id := range gameRefs[week] {
-				fmt.Printf("\t%s: %+v\n", gameRefs[week][id].Path, weekLookup[week][id])
+				fmt.Printf("\t%s: %+v\n", gameRefs[week][id].Path, gameLookup[week][id])
 			}
 		}
 		return
 	}
 
+	// transactions are limited to 500 writes, so split up everything
+	// season first
+	// venues second
+	ids := make([]uint64, 0, len(venueRefs))
+	for id := range venueRefs {
+		ids = append(ids, id)
+	}
+	for ll := 0; ll < len(ids); ll += 500 {
+		ul := ll + 500
+		if ul > len(ids) {
+			ul = len(ids)
+		}
+		err = writeVenues(ctx, fsClient, venueRefs, venueLookup, ids[ll:ul])
+		if err != nil {
+			panic(err)
+		}
+	}
+
+}
+
+func writeVenues(ctx context.Context, client *fs.Client, vr map[uint64]*fs.DocumentRef, vl map[uint64]firestore.Venue, ids []uint64) error {
+	err := client.RunTransaction(ctx, func(ctx context.Context, tx *fs.Transaction) error {
+		for _, id := range ids {
+			data := vl[id]
+			if err := tx.Create(vr[id], &data); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
 }
 
 func parseCommandLine() {
@@ -194,6 +245,25 @@ func doRequest(client *http.Client, key string, url string) ([]byte, error) {
 	}
 
 	return body, nil
+}
+
+func getWeeks(client *http.Client, key string, season int) (map[int]Week, error) {
+	body, err := doRequest(client, key, fmt.Sprintf("https://api.collegefootballdata.com/calendar?year=%d", season))
+	if err != nil {
+		return nil, fmt.Errorf("failed to do calendar request: %v", err)
+	}
+
+	var weeks []Week
+	err = json.Unmarshal(body, &weeks)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal calendar response body: %v", err)
+	}
+
+	wmap := make(map[int]Week)
+	for _, week := range weeks {
+		wmap[week.Number] = week
+	}
+	return wmap, nil
 }
 
 func getTeams(client *http.Client, key string) (map[uint64]Team, error) {
@@ -268,29 +338,80 @@ func prepVenues(client *fs.Client, sr *fs.DocumentRef, vl map[uint64]firestore.V
 	return venueRefs
 }
 
-func prepTeams(client *fs.Client, sr *fs.DocumentRef, tl map[uint64]firestore.Team, tm map[uint64]Team, vl map[uint64]*fs.DocumentRef) (map[uint64]*fs.DocumentRef, error) {
+func prepTeams(client *fs.Client, sr *fs.DocumentRef, tl map[uint64]firestore.Team, tm map[uint64]Team, vl map[uint64]*fs.DocumentRef) (map[uint64]*fs.DocumentRef, map[string]*fs.DocumentRef, map[string]*fs.DocumentRef, map[string]*fs.DocumentRef, error) {
 	teamRefs := make(map[uint64]*fs.DocumentRef)
+	teamsByAbbr := make(map[string]*fs.DocumentRef)
+	teamsByShort := make(map[string]*fs.DocumentRef)
+	teamsByOther := make(map[string]*fs.DocumentRef)
 	for id, team := range tl {
 		// lookup venue
 		venueID := tm[id].Location.VenueID
 		if venueID != nil {
 			venueRef, ok := vl[*venueID]
 			if !ok {
-				return nil, fmt.Errorf("team %d references unknown venue %d", id, *venueID)
+				return nil, nil, nil, nil, fmt.Errorf("team %d references unknown venue %d", id, *venueID)
 			}
 			team.Venue = venueRef
+			tl[id] = team
 		}
-		teamRefs[id] = sr.Collection("teams").Doc(fmt.Sprintf("%d", id))
+		doc := sr.Collection("teams").Doc(fmt.Sprintf("%d", id))
+		teamRefs[id] = doc
+		if _, ok := teamsByAbbr[team.Abbreviation]; ok {
+			// Attempt 1: abbreviate
+			team.Abbreviation = abbreviate(team.School)
+			tl[id] = team
+		}
+		_, ok := teamsByAbbr[team.Abbreviation]
+		for ok {
+			// Attempt 2: keep adding Xs until we have a unique abbreviation
+			team.Abbreviation = team.Abbreviation + "X"
+			tl[id] = team
+			_, ok = teamsByAbbr[team.Abbreviation]
+		}
+		if tfound, ok := teamsByAbbr[team.Abbreviation]; ok {
+			// Attempt 3: Fail. :()
+			return nil, nil, nil, nil, fmt.Errorf("abbreviation %s used by both %s and %s", team.Abbreviation, doc.ID, tfound.ID)
+		}
+		teamsByAbbr[team.Abbreviation] = doc
+		for _, name := range team.ShortNames {
+			if tfound, ok := teamsByShort[name]; ok {
+				fmt.Printf("short name %s used by both %s and %s: skipping %s\n", name, doc.ID, tfound.ID, doc.ID)
+				continue
+			}
+			teamsByShort[name] = doc
+		}
+		for _, name := range team.OtherNames {
+			if tfound, ok := teamsByOther[name]; ok {
+				fmt.Printf("other name %s used by both %s and %s: skipping %s\n", name, doc.ID, tfound.ID, doc.ID)
+				continue
+			}
+			teamsByOther[name] = doc
+		}
 	}
-	return teamRefs, nil
+	return teamRefs, teamsByAbbr, teamsByShort, teamsByOther, nil
 }
 
-func prepWeeks(client *fs.Client, sr *fs.DocumentRef, wl map[int]map[uint64]firestore.Game) map[int]*fs.DocumentRef {
+func prepWeeks(client *fs.Client, sr *fs.DocumentRef, wl map[int]firestore.Week) map[int]*fs.DocumentRef {
 	weekRefs := make(map[int]*fs.DocumentRef)
-	for week := range wl {
-		weekRefs[week] = sr.Collection("weeks").Doc(fmt.Sprintf("%d", week))
+	for n, week := range wl {
+		doc := sr.Collection("weeks").Doc(fmt.Sprintf("%d", n))
+		weekRefs[n] = doc
+		week.Season = sr
+		wl[n] = week
 	}
 	return weekRefs
+}
+
+func updateWeeks(wl map[int]firestore.Week, grs map[int]map[uint64]*fs.DocumentRef) {
+	for n, week := range wl {
+		gmap := grs[n]
+		games := make([]*fs.DocumentRef, 0, len(gmap))
+		for _, ref := range gmap {
+			games = append(games, ref)
+		}
+		week.Games = games
+		wl[n] = week
+	}
 }
 
 func prepGames(client *fs.Client, wr *fs.DocumentRef, gl map[uint64]firestore.Game, gm map[uint64]Game, vl map[uint64]*fs.DocumentRef, tl map[uint64]*fs.DocumentRef) (map[uint64]*fs.DocumentRef, error) {
@@ -317,6 +438,7 @@ func prepGames(client *fs.Client, wr *fs.DocumentRef, gl map[uint64]firestore.Ga
 			return nil, fmt.Errorf("game %d references unknown away team %d", id, awayID)
 		}
 		game.AwayTeam = awayRef
+		gl[id] = game
 		gameRefs[id] = wr.Collection("games").Doc(fmt.Sprintf("%d", id))
 	}
 	return gameRefs, nil

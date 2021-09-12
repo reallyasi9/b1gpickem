@@ -66,10 +66,41 @@ func coalesceString(s *string, replacement string) string {
 	return *s
 }
 
+func distinctStrings(ss []string) []string {
+	// defensive copy
+	result := make([]string, len(ss))
+	copy(result, ss)
+	distinct := make(map[string]struct{})
+	for i, s := range result {
+		if _, ok := distinct[s]; ok {
+			result = append(result[:i], result[i+1:]...)
+			continue
+		}
+		distinct[s] = struct{}{}
+	}
+	return result
+}
+
+func abbreviate(s string) string {
+	if len(s) < 5 {
+		return strings.ToUpper(s)
+	}
+	splits := strings.Split(s, " ")
+	if len(splits) == 1 {
+		return strings.ToUpper(s[:4])
+	}
+	var sb strings.Builder
+	for _, split := range splits {
+		sb.WriteString(strings.ToUpper(split[:1]))
+	}
+	return sb.String()
+}
+
 // ToFirestore does not link the Venue--that has to be done with an external lookup.
 func (t Team) ToFirestore() (uint64, firestore.Team) {
 	otherNames := make([]string, 0)
-	otherNames = appendNonNilStrings(otherNames, t.Mascot, t.AltName1, t.AltName2, t.AltName3)
+	otherNames = appendNonNilStrings(otherNames, t.AltName1, t.AltName2, t.AltName3)
+	otherNames = distinctStrings(otherNames)
 	colors := make([]string, 0)
 	colors = appendNonNilStrings(colors, t.Color, t.AltColor)
 
@@ -106,7 +137,8 @@ type Venue struct {
 func (v Venue) ToFirestore() (uint64, firestore.Venue) {
 	latlon := make([]float64, 0)
 	if v.Location.X != 0 || v.Location.Y != 0 {
-		latlon = []float64{v.Location.Y, v.Location.X}
+		// The CFBData calls latitude "X" and longitude "Y" for whatever reason
+		latlon = []float64{v.Location.X, v.Location.Y}
 	}
 	fv := firestore.Venue{
 		Name:        v.Name,
@@ -122,4 +154,17 @@ func (v Venue) ToFirestore() (uint64, firestore.Venue) {
 		Timezone:    v.Timezone,
 	}
 	return v.ID, fv
+}
+
+type Week struct {
+	Season         string    `json:"season"`
+	Number         int       `json:"week"`
+	FirstGameStart time.Time `json:"firstGameStart"`
+	LastGameStart  time.Time `json:"lastGameStart"`
+}
+
+func (w Week) ToFirestore() firestore.Week {
+	return firestore.Week{
+		Number: w.Number,
+	}
 }

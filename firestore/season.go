@@ -20,12 +20,9 @@ type Season struct {
 	// TeamsByOtherName is a map of OtherNames to references to Team documents in Firestore.
 	TeamsByOtherName map[string]*firestore.DocumentRef `firestore:"teams_other"`
 
-	// TeamsByLukeName is a map of LukeNames to references to Team documents in the Firestore.
-	TeamsByLukeName map[string]*firestore.DocumentRef `firestore:"teams_luke"`
+	// TeamsByShortName is a map of LukeNames to references to Team documents in the Firestore.
+	TeamsByShortName map[string]*firestore.DocumentRef `firestore:"teams_short"`
 
-	// TeamsByName4 is a map of Name4 to references to Team documents in the Firestore.
-	TeamsByName4 map[string]*firestore.DocumentRef `firestore:"teams"`
-
-	// Weeks are references to Week documents in the Firestore.
-	Weeks []*firestore.DocumentRef
+	// TeamsByAbbreviation is a map of Name4 to references to Team documents in the Firestore.
+	TeamsByAbbreviation map[string]*firestore.DocumentRef `firestore:"teams"`
 }
