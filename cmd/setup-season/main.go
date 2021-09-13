@@ -170,6 +170,10 @@ func main() {
 
 	// transactions are limited to 500 writes, so split up everything
 	// season first
+	_, err = seasonRef.Set(ctx, &season)
+	if err != nil {
+		panic(err)
+	}
 	// venues second
 	ids := make([]uint64, 0, len(venueRefs))
 	for id := range venueRefs {
@@ -185,14 +189,70 @@ func main() {
 			panic(err)
 		}
 	}
-
+	// teams third
+	ids = make([]uint64, 0, len(teamRefs))
+	for id := range teamRefs {
+		ids = append(ids, id)
+	}
+	for ll := 0; ll < len(ids); ll += 500 {
+		ul := ll + 500
+		if ul > len(ids) {
+			ul = len(ids)
+		}
+		err = writeTeams(ctx, fsClient, teamRefs, teamLookup, ids[ll:ul])
+		if err != nil {
+			panic(err)
+		}
+	}
+	// weeks fourth
+	for i, ref := range weekRefs {
+		week := weekLookup[i]
+		_, err = ref.Set(ctx, &week)
+		if err != nil {
+			panic(err)
+		}
+	}
+	// games fifth
+	for wk, grs := range gameRefs {
+		gl := gameLookup[wk]
+		err = writeGames(ctx, fsClient, grs, gl)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func writeVenues(ctx context.Context, client *fs.Client, vr map[uint64]*fs.DocumentRef, vl map[uint64]firestore.Venue, ids []uint64) error {
 	err := client.RunTransaction(ctx, func(ctx context.Context, tx *fs.Transaction) error {
 		for _, id := range ids {
 			data := vl[id]
-			if err := tx.Create(vr[id], &data); err != nil {
+			if err := tx.Set(vr[id], &data); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
+}
+
+func writeTeams(ctx context.Context, client *fs.Client, tr map[uint64]*fs.DocumentRef, tl map[uint64]firestore.Team, ids []uint64) error {
+	err := client.RunTransaction(ctx, func(ctx context.Context, tx *fs.Transaction) error {
+		for _, id := range ids {
+			data := tl[id]
+			if err := tx.Set(tr[id], &data); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
+}
+
+func writeGames(ctx context.Context, client *fs.Client, gr map[uint64]*fs.DocumentRef, gl map[uint64]firestore.Game) error {
+	err := client.RunTransaction(ctx, func(ctx context.Context, tx *fs.Transaction) error {
+		for id, ref := range gr {
+			data := gl[id]
+			if err := tx.Set(ref, &data); err != nil {
 				return err
 			}
 		}

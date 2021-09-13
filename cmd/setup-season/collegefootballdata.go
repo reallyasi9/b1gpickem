@@ -145,7 +145,7 @@ func (v Venue) ToFirestore() (uint64, firestore.Venue) {
 		Capacity:    v.Capacity,
 		Grass:       v.Grass,
 		City:        v.City,
-		State:       v.City,
+		State:       v.State,
 		Zip:         v.Zip,
 		CountryCode: v.CountryCode,
 		LatLon:      latlon,
