@@ -36,6 +36,27 @@ type Game struct {
 	AwayPoints *int `firestore:"away_points"`
 }
 
+func (g Game) String() string {
+	var sb strings.Builder
+	sb.WriteString("Game\n")
+	sb.WriteString(treeRef("HomeTeam", 0, false, g.HomeTeam))
+	sb.WriteRune('\n')
+	sb.WriteString(treeRef("AwayTeam", 0, false, g.AwayTeam))
+	sb.WriteRune('\n')
+	sb.WriteString(treeString("StartTime", 0, false, g.StartTime.Format(time.UnixDate)))
+	sb.WriteRune('\n')
+	sb.WriteString(treeBool("StartTimeTBD", 0, false, g.StartTimeTBD))
+	sb.WriteRune('\n')
+	sb.WriteString(treeBool("NeutralSite", 0, false, g.NeutralSite))
+	sb.WriteRune('\n')
+	sb.WriteString(treeRef("Venue", 0, false, g.Venue))
+	sb.WriteRune('\n')
+	sb.WriteString(treeIntPtr("HomePoints", 0, false, g.HomePoints))
+	sb.WriteRune('\n')
+	sb.WriteString(treeIntPtr("AwayPoints", 0, true, g.AwayPoints))
+	return sb.String()
+}
+
 // Game is a game's data for storing picks in Firestore.
 type SlateGame struct {
 	// Teams are references to the teams playing in the game.
