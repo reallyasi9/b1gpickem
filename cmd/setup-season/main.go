@@ -10,6 +10,7 @@ import (
 	"time"
 
 	fs "cloud.google.com/go/firestore"
+	"github.com/reallyasi9/b1gpickem/cfbdata"
 	"github.com/reallyasi9/b1gpickem/firestore"
 )
 
@@ -62,7 +63,7 @@ func main() {
 
 	httpClient := http.DefaultClient
 
-	weeks, err := GetWeeks(httpClient, APIKey, Season)
+	weeks, err := cfbdata.GetWeeks(httpClient, APIKey, Season)
 	if err != nil {
 		panic(err)
 	}
@@ -75,23 +76,17 @@ func main() {
 		fmt.Printf("Limited to week %d\n", UpdateWeek)
 	}
 
-	venues, err := GetVenues(httpClient, APIKey)
+	venues, err := cfbdata.GetVenues(httpClient, APIKey)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("Loaded %d venues\n", venues.Len())
 
-	// teams, err := getTeams(httpClient, APIKey)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Printf("Loaded %d teams\n", len(teams))
-	// // convert to map keyed by ID for easy lookup
-	// teamLookup := make(map[uint64]firestore.Team)
-	// for _, team := range teams {
-	// 	id, t := team.ToFirestore()
-	// 	teamLookup[id] = t
-	// }
+	teams, err := cfbdata.GetTeams(httpClient, APIKey)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Loaded %d teams\n", teams.Len())
 
 	// games, err := GetGames(httpClient, APIKey, Season, UpdateWeek)
 	// if err != nil {
@@ -101,7 +96,12 @@ func main() {
 
 	// set everything up to write to firestore
 	seasonRef := fsClient.Collection("seasons").Doc(strconv.Itoa(Season))
-	venues.LinkRefs(seasonRef.Collection("venues"))
+	if err := venues.LinkRefs(seasonRef.Collection("venues")); err != nil {
+		panic(err)
+	}
+	if err := teams.LinkRefs(venues, seasonRef.Collection("teams")); err != nil {
+		panic(err)
+	}
 	// teamRefs, teamsByAbbreviation, teamsByShort, teamsByOther, err := prepTeams(fsClient, seasonRef, teamLookup, teams, venueRefs)
 	// if err != nil {
 	// 	panic(err)
@@ -134,15 +134,14 @@ func main() {
 		fmt.Println("DRY RUN: would write the following to firestore:")
 		// fmt.Printf("Season:\n%s: %+v\n---\n", seasonRef.Path, season)
 		fmt.Println("Venues:")
-		venues.DryRun(os.Stdout, seasonRef.Collection("venues"))
+		cfbdata.DryRun(os.Stdout, venues)
 		fmt.Println("---")
-		// fmt.Println("Teams:")
-		// for id := range teamRefs {
-		// 	fmt.Printf("%s: %+v\n", teamRefs[id].Path, teamLookup[id])
-		// }
-		// fmt.Println("---")
+		fmt.Println("Teams:")
+		cfbdata.DryRun(os.Stdout, teams)
+		fmt.Println("---")
 		fmt.Println("Weeks:")
-		weeks.DryRun(os.Stdout, seasonRef.Collection("weeks"))
+		cfbdata.DryRun(os.Stdout, weeks)
+		fmt.Println("---")
 		return
 	}
 
@@ -263,104 +262,104 @@ func parseCommandLine() {
 	}
 }
 
-func prepVenues(client *fs.Client, sr *fs.DocumentRef, vl map[uint64]firestore.Venue) map[uint64]*fs.DocumentRef {
-	venueRefs := make(map[uint64]*fs.DocumentRef)
-	for id := range vl {
-		venueRefs[id] = sr.Collection("venues").Doc(fmt.Sprintf("%d", id))
-	}
-	return venueRefs
-}
+// func prepVenues(client *fs.Client, sr *fs.DocumentRef, vl map[uint64]firestore.Venue) map[uint64]*fs.DocumentRef {
+// 	venueRefs := make(map[uint64]*fs.DocumentRef)
+// 	for id := range vl {
+// 		venueRefs[id] = sr.Collection("venues").Doc(fmt.Sprintf("%d", id))
+// 	}
+// 	return venueRefs
+// }
 
-func prepTeams(client *fs.Client, sr *fs.DocumentRef, tl map[uint64]firestore.Team, tm map[uint64]Team, vl map[uint64]*fs.DocumentRef) (map[uint64]*fs.DocumentRef, map[string]*fs.DocumentRef, map[string]*fs.DocumentRef, map[string]*fs.DocumentRef, error) {
-	teamRefs := make(map[uint64]*fs.DocumentRef)
-	teamsByAbbr := make(map[string]*fs.DocumentRef)
-	teamsByShort := make(map[string]*fs.DocumentRef)
-	teamsByOther := make(map[string]*fs.DocumentRef)
-	for id, team := range tl {
-		// lookup venue
-		venueID := tm[id].Location.VenueID
-		if venueID != nil {
-			venueRef, ok := vl[*venueID]
-			if !ok {
-				return nil, nil, nil, nil, fmt.Errorf("team %d references unknown venue %d", id, *venueID)
-			}
-			team.Venue = venueRef
-			tl[id] = team
-		}
-		doc := sr.Collection("teams").Doc(fmt.Sprintf("%d", id))
-		teamRefs[id] = doc
-		if _, ok := teamsByAbbr[team.Abbreviation]; ok {
-			// Attempt 1: abbreviate
-			team.Abbreviation = abbreviate(team.School)
-			tl[id] = team
-		}
-		_, ok := teamsByAbbr[team.Abbreviation]
-		for ok {
-			// Attempt 2: keep adding Xs until we have a unique abbreviation
-			team.Abbreviation = team.Abbreviation + "X"
-			tl[id] = team
-			_, ok = teamsByAbbr[team.Abbreviation]
-		}
-		if tfound, ok := teamsByAbbr[team.Abbreviation]; ok {
-			// Attempt 3: Fail. :()
-			return nil, nil, nil, nil, fmt.Errorf("abbreviation %s used by both %s and %s", team.Abbreviation, doc.ID, tfound.ID)
-		}
-		teamsByAbbr[team.Abbreviation] = doc
-		for _, name := range team.ShortNames {
-			if tfound, ok := teamsByShort[name]; ok {
-				fmt.Printf("short name %s used by both %s and %s: skipping %s\n", name, doc.ID, tfound.ID, doc.ID)
-				continue
-			}
-			teamsByShort[name] = doc
-		}
-		for _, name := range team.OtherNames {
-			if tfound, ok := teamsByOther[name]; ok {
-				fmt.Printf("other name %s used by both %s and %s: skipping %s\n", name, doc.ID, tfound.ID, doc.ID)
-				continue
-			}
-			teamsByOther[name] = doc
-		}
-	}
-	return teamRefs, teamsByAbbr, teamsByShort, teamsByOther, nil
-}
+// func prepTeams(client *fs.Client, sr *fs.DocumentRef, tl map[uint64]firestore.Team, tm map[uint64]Team, vl map[uint64]*fs.DocumentRef) (map[uint64]*fs.DocumentRef, map[string]*fs.DocumentRef, map[string]*fs.DocumentRef, map[string]*fs.DocumentRef, error) {
+// 	teamRefs := make(map[uint64]*fs.DocumentRef)
+// 	teamsByAbbr := make(map[string]*fs.DocumentRef)
+// 	teamsByShort := make(map[string]*fs.DocumentRef)
+// 	teamsByOther := make(map[string]*fs.DocumentRef)
+// 	for id, team := range tl {
+// 		// lookup venue
+// 		venueID := tm[id].Location.VenueID
+// 		if venueID != nil {
+// 			venueRef, ok := vl[*venueID]
+// 			if !ok {
+// 				return nil, nil, nil, nil, fmt.Errorf("team %d references unknown venue %d", id, *venueID)
+// 			}
+// 			team.Venue = venueRef
+// 			tl[id] = team
+// 		}
+// 		doc := sr.Collection("teams").Doc(fmt.Sprintf("%d", id))
+// 		teamRefs[id] = doc
+// 		if _, ok := teamsByAbbr[team.Abbreviation]; ok {
+// 			// Attempt 1: abbreviate
+// 			team.Abbreviation = abbreviate(team.School)
+// 			tl[id] = team
+// 		}
+// 		_, ok := teamsByAbbr[team.Abbreviation]
+// 		for ok {
+// 			// Attempt 2: keep adding Xs until we have a unique abbreviation
+// 			team.Abbreviation = team.Abbreviation + "X"
+// 			tl[id] = team
+// 			_, ok = teamsByAbbr[team.Abbreviation]
+// 		}
+// 		if tfound, ok := teamsByAbbr[team.Abbreviation]; ok {
+// 			// Attempt 3: Fail. :()
+// 			return nil, nil, nil, nil, fmt.Errorf("abbreviation %s used by both %s and %s", team.Abbreviation, doc.ID, tfound.ID)
+// 		}
+// 		teamsByAbbr[team.Abbreviation] = doc
+// 		for _, name := range team.ShortNames {
+// 			if tfound, ok := teamsByShort[name]; ok {
+// 				fmt.Printf("short name %s used by both %s and %s: skipping %s\n", name, doc.ID, tfound.ID, doc.ID)
+// 				continue
+// 			}
+// 			teamsByShort[name] = doc
+// 		}
+// 		for _, name := range team.OtherNames {
+// 			if tfound, ok := teamsByOther[name]; ok {
+// 				fmt.Printf("other name %s used by both %s and %s: skipping %s\n", name, doc.ID, tfound.ID, doc.ID)
+// 				continue
+// 			}
+// 			teamsByOther[name] = doc
+// 		}
+// 	}
+// 	return teamRefs, teamsByAbbr, teamsByShort, teamsByOther, nil
+// }
 
-func prepWeeks(client *fs.Client, sr *fs.DocumentRef, wl map[int]firestore.Week) map[int]*fs.DocumentRef {
-	weekRefs := make(map[int]*fs.DocumentRef)
-	for n, week := range wl {
-		doc := sr.Collection("weeks").Doc(fmt.Sprintf("%d", n))
-		weekRefs[n] = doc
-		week.Season = sr
-		wl[n] = week
-	}
-	return weekRefs
-}
+// func prepWeeks(client *fs.Client, sr *fs.DocumentRef, wl map[int]firestore.Week) map[int]*fs.DocumentRef {
+// 	weekRefs := make(map[int]*fs.DocumentRef)
+// 	for n, week := range wl {
+// 		doc := sr.Collection("weeks").Doc(fmt.Sprintf("%d", n))
+// 		weekRefs[n] = doc
+// 		week.Season = sr
+// 		wl[n] = week
+// 	}
+// 	return weekRefs
+// }
 
-func prepGames(client *fs.Client, wr *fs.DocumentRef, gl map[uint64]firestore.Game, gm map[uint64]Game, vl map[uint64]*fs.DocumentRef, tl map[uint64]*fs.DocumentRef) (map[uint64]*fs.DocumentRef, error) {
-	gameRefs := make(map[uint64]*fs.DocumentRef)
-	for id, game := range gl {
-		// lookup venue
-		venueID := gm[id].VenueID
-		venueRef, ok := vl[venueID]
-		if !ok {
-			return nil, fmt.Errorf("game %d references unknown venue %d", id, venueID)
-		}
-		game.Venue = venueRef
-		// lookup home team
-		homeID := gm[id].HomeID
-		homeRef, ok := tl[homeID]
-		if !ok {
-			return nil, fmt.Errorf("game %d references unknown home team %d", id, homeID)
-		}
-		game.HomeTeam = homeRef
-		// lookup away team
-		awayID := gm[id].AwayID
-		awayRef, ok := tl[awayID]
-		if !ok {
-			return nil, fmt.Errorf("game %d references unknown away team %d", id, awayID)
-		}
-		game.AwayTeam = awayRef
-		gl[id] = game
-		gameRefs[id] = wr.Collection("games").Doc(fmt.Sprintf("%d", id))
-	}
-	return gameRefs, nil
-}
+// func prepGames(client *fs.Client, wr *fs.DocumentRef, gl map[uint64]firestore.Game, gm map[uint64]Game, vl map[uint64]*fs.DocumentRef, tl map[uint64]*fs.DocumentRef) (map[uint64]*fs.DocumentRef, error) {
+// 	gameRefs := make(map[uint64]*fs.DocumentRef)
+// 	for id, game := range gl {
+// 		// lookup venue
+// 		venueID := gm[id].VenueID
+// 		venueRef, ok := vl[venueID]
+// 		if !ok {
+// 			return nil, fmt.Errorf("game %d references unknown venue %d", id, venueID)
+// 		}
+// 		game.Venue = venueRef
+// 		// lookup home team
+// 		homeID := gm[id].HomeID
+// 		homeRef, ok := tl[homeID]
+// 		if !ok {
+// 			return nil, fmt.Errorf("game %d references unknown home team %d", id, homeID)
+// 		}
+// 		game.HomeTeam = homeRef
+// 		// lookup away team
+// 		awayID := gm[id].AwayID
+// 		awayRef, ok := tl[awayID]
+// 		if !ok {
+// 			return nil, fmt.Errorf("game %d references unknown away team %d", id, awayID)
+// 		}
+// 		game.AwayTeam = awayRef
+// 		gl[id] = game
+// 		gameRefs[id] = wr.Collection("games").Doc(fmt.Sprintf("%d", id))
+// 	}
+// 	return gameRefs, nil
+// }
