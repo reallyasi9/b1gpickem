@@ -72,15 +72,12 @@ func (wc WeekCollection) RefByID(id int64) (*fs.DocumentRef, bool) {
 }
 
 func (w Week) toFirestore() firestore.Week {
-	return firestore.Week{
-		Number: int(w.Number),
-	}
+	return firestore.Week{}
 }
 
-func (wc WeekCollection) LinkRefs(sr *fs.DocumentRef, col *fs.CollectionRef) error {
+func (wc WeekCollection) LinkRefs(col *fs.CollectionRef) error {
 	for i, week := range wc.weeks {
 		fsWeek := wc.fsWeeks[i]
-		fsWeek.Season = sr
 		wc.fsWeeks[i] = fsWeek
 		wc.refs[i] = col.Doc(fmt.Sprintf("%d", week.Number))
 	}

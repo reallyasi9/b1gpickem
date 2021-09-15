@@ -98,7 +98,7 @@ func setupSeason(ctx context.Context, year int, force, dryRun bool) {
 		Year:      year,
 		StartTime: weeks.FirstStartTime(),
 	}
-	if err := weeks.LinkRefs(seasonRef, seasonRef.Collection("weeks")); err != nil {
+	if err := weeks.LinkRefs(seasonRef.Collection("weeks")); err != nil {
 		panic(err)
 	}
 	if err := venues.LinkRefs(seasonRef.Collection("venues")); err != nil {
@@ -174,7 +174,14 @@ func setupSeason(ctx context.Context, year int, force, dryRun bool) {
 			panic(err)
 		}
 	}
-	// Games fourth
+	// Weeks fourth
+	errs = cfbdata.IterateWrite(ctx, fsClient, weeks, 500, writeFunc)
+	for err := range errs {
+		if err != nil {
+			panic(err)
+		}
+	}
+	// Games fifth
 	for _, weekOfGames := range gamesByWeek {
 		errs = cfbdata.IterateWrite(ctx, fsClient, weekOfGames, 500, writeFunc)
 		for err := range errs {
