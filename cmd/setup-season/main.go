@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -67,31 +68,25 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Loaded %d weeks\n", weeks.Len())
+	log.Printf("Loaded %d weeks\n", weeks.Len())
 
 	venues, err := cfbdata.GetVenues(httpClient, APIKey)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Loaded %d venues\n", venues.Len())
+	log.Printf("Loaded %d venues\n", venues.Len())
 
 	teams, err := cfbdata.GetTeams(httpClient, APIKey)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Loaded %d teams\n", teams.Len())
+	log.Printf("Loaded %d teams\n", teams.Len())
 
 	games, err := cfbdata.GetGames(httpClient, APIKey, Season)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Loaded %d games\n", games.Len())
-
-	// games, err := GetGames(httpClient, APIKey, Season, UpdateWeek)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Printf("Loaded %d games\n", games.Len())
+	log.Printf("Loaded %d games\n", games.Len())
 
 	// set everything up to write to firestore
 	seasonRef := fsClient.Collection("seasons").Doc(strconv.Itoa(Season))
@@ -120,23 +115,23 @@ func main() {
 	}
 
 	if DryRun {
-		fmt.Println("DRY RUN: would write the following to firestore:")
+		log.Println("DRY RUN: would write the following to firestore:")
 		// fmt.Printf("Season:\n%s: %+v\n---\n", seasonRef.Path, season)
-		fmt.Println("Venues:")
-		cfbdata.DryRun(os.Stdout, venues)
-		fmt.Println("---")
-		fmt.Println("Teams:")
-		cfbdata.DryRun(os.Stdout, teams)
-		fmt.Println("---")
-		fmt.Println("Weeks:")
-		cfbdata.DryRun(os.Stdout, weeks)
-		fmt.Println("---")
-		fmt.Println("Games:")
+		log.Println("Venues:")
+		cfbdata.DryRun(log.Writer(), venues)
+		log.Println("---")
+		log.Println("Teams:")
+		cfbdata.DryRun(log.Writer(), teams)
+		log.Println("---")
+		log.Println("Weeks:")
+		cfbdata.DryRun(log.Writer(), weeks)
+		log.Println("---")
+		log.Println("Games:")
 		for wk, gc := range gamesByWeek {
-			fmt.Printf("Week %d\n", wk)
-			cfbdata.DryRun(os.Stdout, gc)
+			log.Printf("Week %d\n", wk)
+			cfbdata.DryRun(log.Writer(), gc)
 		}
-		fmt.Println("---")
+		log.Println("---")
 		return
 	}
 
@@ -145,7 +140,7 @@ func main() {
 		return tx.Create(ref, d)
 	}
 	if Force {
-		fmt.Println("Forcing overwrite with SET command")
+		log.Println("Forcing overwrite with SET command")
 		writeFunc = func(tx *fs.Transaction, ref *fs.DocumentRef, d interface{}) error {
 			return tx.Set(ref, d)
 		}
@@ -154,7 +149,7 @@ func main() {
 			panic(err)
 		}
 	} else {
-		fmt.Println("Writing with CREATE command")
+		log.Println("Writing with CREATE command")
 		_, err := seasonRef.Create(ctx, &season)
 		if err != nil {
 			panic(err)
@@ -184,6 +179,8 @@ func main() {
 			}
 		}
 	}
+
+	log.Println("Done.")
 }
 
 func parseCommandLine() {
@@ -194,13 +191,13 @@ func parseCommandLine() {
 		os.Exit(1)
 	}
 	if APIKey == "" {
-		fmt.Println("APIKey not given: this will probably fail.")
+		log.Println("APIKey not given: this will probably fail.")
 	}
 	if ProjectID == "" {
 		ProjectID = os.Getenv("GCP_PROJECT")
 	}
 	if ProjectID == "" {
-		fmt.Println("-project not given and environment variable GCP_PROJECT not found: this will probably fail.")
+		log.Println("-project not given and environment variable GCP_PROJECT not found: this will probably fail.")
 	}
 
 	var err error // avoid shadowing
