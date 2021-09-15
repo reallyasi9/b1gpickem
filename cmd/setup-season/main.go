@@ -56,10 +56,10 @@ func init() {
 func main() {
 	parseCommandLine()
 	ctx := context.Background()
-	setupSeason(ctx, Season, DryRun)
+	setupSeason(ctx, Season, Force, DryRun)
 }
 
-func setupSeason(ctx context.Context, year int, dryRun bool) {
+func setupSeason(ctx context.Context, year int, force, dryRun bool) {
 
 	fsClient, err := fs.NewClient(ctx, ProjectID)
 	if err != nil {
@@ -120,7 +120,7 @@ func setupSeason(ctx context.Context, year int, dryRun bool) {
 
 	if dryRun {
 		log.Println("DRY RUN: would write the following to firestore:")
-		fmt.Printf("Season:\n%s: %+v\n---\n", seasonRef.Path, season)
+		log.Printf("Season:\n%s: %+v\n---\n", seasonRef.Path, season)
 		log.Println("Venues:")
 		cfbdata.DryRun(log.Writer(), venues)
 		log.Println("---")
@@ -143,7 +143,7 @@ func setupSeason(ctx context.Context, year int, dryRun bool) {
 	writeFunc := func(tx *fs.Transaction, ref *fs.DocumentRef, d interface{}) error {
 		return tx.Create(ref, d)
 	}
-	if Force {
+	if force {
 		log.Println("Forcing overwrite with SET command")
 		writeFunc = func(tx *fs.Transaction, ref *fs.DocumentRef, d interface{}) error {
 			return tx.Set(ref, d)
