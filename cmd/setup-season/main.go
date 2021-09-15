@@ -55,8 +55,12 @@ func init() {
 
 func main() {
 	parseCommandLine()
-
 	ctx := context.Background()
+	setupSeason(ctx, Season, DryRun)
+}
+
+func setupSeason(ctx context.Context, year int, dryRun bool) {
+
 	fsClient, err := fs.NewClient(ctx, ProjectID)
 	if err != nil {
 		panic(err)
@@ -64,7 +68,7 @@ func main() {
 
 	httpClient := http.DefaultClient
 
-	weeks, err := cfbdata.GetWeeks(httpClient, APIKey, Season)
+	weeks, err := cfbdata.GetWeeks(httpClient, APIKey, year)
 	if err != nil {
 		panic(err)
 	}
@@ -82,16 +86,16 @@ func main() {
 	}
 	log.Printf("Loaded %d teams\n", teams.Len())
 
-	games, err := cfbdata.GetGames(httpClient, APIKey, Season)
+	games, err := cfbdata.GetGames(httpClient, APIKey, year)
 	if err != nil {
 		panic(err)
 	}
 	log.Printf("Loaded %d games\n", games.Len())
 
 	// set everything up to write to firestore
-	seasonRef := fsClient.Collection("seasons").Doc(strconv.Itoa(Season))
+	seasonRef := fsClient.Collection("seasons").Doc(strconv.Itoa(year))
 	season := firestore.Season{
-		Year:      Season,
+		Year:      year,
 		StartTime: weeks.FirstStartTime(),
 	}
 	if err := weeks.LinkRefs(seasonRef, seasonRef.Collection("weeks")); err != nil {
@@ -114,9 +118,9 @@ func main() {
 		gamesByWeek[id] = gs
 	}
 
-	if DryRun {
+	if dryRun {
 		log.Println("DRY RUN: would write the following to firestore:")
-		// fmt.Printf("Season:\n%s: %+v\n---\n", seasonRef.Path, season)
+		fmt.Printf("Season:\n%s: %+v\n---\n", seasonRef.Path, season)
 		log.Println("Venues:")
 		cfbdata.DryRun(log.Writer(), venues)
 		log.Println("---")
