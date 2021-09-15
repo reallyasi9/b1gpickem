@@ -3,6 +3,7 @@ package cfbdata
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -11,14 +12,14 @@ import (
 )
 
 type Game struct {
-	ID           uint64    `json:"id"`
+	ID           int64     `json:"id"`
 	Week         int       `json:"week"`
 	StartTime    time.Time `json:"start_date"`
 	StartTimeTBD bool      `json:"start_time_tbd"`
 	NeutralSite  bool      `json:"neutral_site"`
-	VenueID      uint64    `json:"venue_id"`
-	HomeID       uint64    `json:"home_id"`
-	AwayID       uint64    `json:"away_id"`
+	VenueID      int64     `json:"venue_id"`
+	HomeID       int64     `json:"home_id"`
+	AwayID       int64     `json:"away_id"`
 	HomePoints   *int      `json:"home_points"`
 	AwayPoints   *int      `json:"away_points"`
 }
@@ -41,14 +42,11 @@ type GameCollection struct {
 	games   []Game
 	fsGames []firestore.Game
 	refs    []*fs.DocumentRef
-	ids     map[uint64]int
+	ids     map[int64]int
 }
 
-func GetGames(client *http.Client, key string, year, week int) (GameCollection, error) {
+func GetGames(client *http.Client, key string, year int) (GameCollection, error) {
 	query := fmt.Sprintf("?year=%d", year)
-	if week > 0 {
-		query += fmt.Sprintf("&week=%d", week)
-	}
 	body, err := doRequest(client, key, "https://api.collegefootballdata.com/games"+query)
 	if err != nil {
 		return GameCollection{}, fmt.Errorf("failed to do game request: %v", err)
@@ -62,7 +60,7 @@ func GetGames(client *http.Client, key string, year, week int) (GameCollection, 
 
 	f := make([]firestore.Game, len(games))
 	refs := make([]*fs.DocumentRef, len(games))
-	ids := make(map[uint64]int)
+	ids := make(map[int64]int)
 	for i, g := range games {
 		f[i] = g.toFirestore()
 		ids[g.ID] = i
@@ -80,11 +78,15 @@ func (gc GameCollection) Ref(i int) *fs.DocumentRef {
 	return gc.refs[i]
 }
 
-func (gc GameCollection) Datum(i int) interface{} {
-	return gc.games[i]
+func (gc GameCollection) ID(i int) int64 {
+	return gc.games[i].ID
 }
 
-func (gc GameCollection) RefByID(id uint64) (*fs.DocumentRef, bool) {
+func (gc GameCollection) Datum(i int) interface{} {
+	return gc.fsGames[i]
+}
+
+func (gc GameCollection) RefByID(id int64) (*fs.DocumentRef, bool) {
 	if i, ok := gc.ids[id]; ok {
 		return gc.refs[i], true
 	}
@@ -96,7 +98,7 @@ func (gc GameCollection) GetWeek(week int) GameCollection {
 	gw := make([]Game, 0)
 	fw := make([]firestore.Game, 0)
 	rw := make([]*fs.DocumentRef, 0)
-	iw := make(map[uint64]int)
+	iw := make(map[int64]int)
 	j := 0
 	for i, g := range gc.games {
 		if g.Week == week {
@@ -133,4 +135,8 @@ func (gc GameCollection) LinkRefs(tc TeamCollection, vc VenueCollection, col *fs
 		gc.refs[i] = col.Doc(fmt.Sprintf("%d", id))
 	}
 	return nil
+}
+
+func (gc GameCollection) FprintDatum(w io.Writer, i int) (int, error) {
+	return fmt.Fprint(w, gc.fsGames[i].String())
 }

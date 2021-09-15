@@ -16,13 +16,4 @@ type Season struct {
 
 	// Pickers is a map of LukeNames to references to Picker documents in Firestore. These are the pickers who are registered to play this season.
 	Pickers map[string]*firestore.DocumentRef `firestore:"pickers"`
-
-	// TeamsByOtherName is a map of OtherNames to references to Team documents in Firestore.
-	TeamsByOtherName map[string]*firestore.DocumentRef `firestore:"teams_other"`
-
-	// TeamsByShortName is a map of LukeNames to references to Team documents in the Firestore.
-	TeamsByShortName map[string]*firestore.DocumentRef `firestore:"teams_short"`
-
-	// TeamsByAbbreviation is a map of Name4 to references to Team documents in the Firestore.
-	TeamsByAbbreviation map[string]*firestore.DocumentRef `firestore:"teams"`
 }

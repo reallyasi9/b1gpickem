@@ -3,6 +3,7 @@ package cfbdata
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	fs "cloud.google.com/go/firestore"
@@ -10,7 +11,7 @@ import (
 )
 
 type Venue struct {
-	ID          uint64 `json:"id"`
+	ID          int64  `json:"id"`
 	Name        string `json:"name"`
 	Capacity    int    `json:"capacity"`
 	Grass       bool   `json:"grass"`
@@ -52,7 +53,7 @@ type VenueCollection struct {
 	venues   []Venue
 	fsVenues []firestore.Venue
 	refs     []*fs.DocumentRef
-	ids      map[uint64]int
+	ids      map[int64]int
 }
 
 func GetVenues(client *http.Client, key string) (VenueCollection, error) {
@@ -69,7 +70,7 @@ func GetVenues(client *http.Client, key string) (VenueCollection, error) {
 
 	f := make([]firestore.Venue, len(venues))
 	refs := make([]*fs.DocumentRef, len(venues))
-	ids := make(map[uint64]int)
+	ids := make(map[int64]int)
 	for i, v := range venues {
 		f[i] = v.toFirestore()
 		ids[v.ID] = i
@@ -86,11 +87,15 @@ func (vc VenueCollection) Ref(i int) *fs.DocumentRef {
 	return vc.refs[i]
 }
 
-func (vc VenueCollection) Datum(i int) interface{} {
-	return vc.venues[i]
+func (vc VenueCollection) ID(i int) int64 {
+	return vc.venues[i].ID
 }
 
-func (vc VenueCollection) RefByID(id uint64) (*fs.DocumentRef, bool) {
+func (vc VenueCollection) Datum(i int) interface{} {
+	return vc.fsVenues[i]
+}
+
+func (vc VenueCollection) RefByID(id int64) (*fs.DocumentRef, bool) {
 	if i, ok := vc.ids[id]; ok {
 		return vc.refs[i], true
 	}
@@ -104,4 +109,8 @@ func (vc VenueCollection) LinkRefs(col *fs.CollectionRef) error {
 		vc.refs[i] = col.Doc(fmt.Sprintf("%d", venue.ID))
 	}
 	return nil
+}
+
+func (vc VenueCollection) FprintDatum(w io.Writer, i int) (int, error) {
+	return fmt.Fprint(w, vc.fsVenues[i])
 }

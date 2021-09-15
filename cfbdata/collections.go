@@ -9,9 +9,11 @@ import (
 )
 
 type Collection interface {
-	RefByID(uint64) (*fs.DocumentRef, bool)
+	RefByID(int64) (*fs.DocumentRef, bool)
 	Ref(int) *fs.DocumentRef
+	ID(int) int64
 	Datum(int) interface{}
+	FprintDatum(io.Writer, int) (int, error)
 	Len() int
 }
 
@@ -47,17 +49,18 @@ func DryRun(w io.Writer, c Collection) (int, error) {
 	n := 0
 	for i := 0; i < c.Len(); i++ {
 		ref := c.Ref(i)
-		val := c.Datum(i)
 		nn, err := fmt.Fprintln(w, ref.Path)
 		n += nn
 		if err != nil {
 			return n, err
 		}
-		nn, err = fmt.Fprintln(w, val)
+		nn, err = c.FprintDatum(w, i)
 		n += nn
 		if err != nil {
 			return n, err
 		}
+		nn, _ = fmt.Fprintln(w)
+		n += nn
 	}
 	return n, nil
 }

@@ -3,6 +3,7 @@ package cfbdata
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 
 type Week struct {
 	Season         string    `json:"season"`
-	Number         uint64    `json:"week"`
+	Number         int64     `json:"week"`
 	FirstGameStart time.Time `json:"firstGameStart"`
 	LastGameStart  time.Time `json:"lastGameStart"`
 }
@@ -21,7 +22,7 @@ type WeekCollection struct {
 	weeks   []Week
 	fsWeeks []firestore.Week
 	refs    []*fs.DocumentRef
-	ids     map[uint64]int
+	ids     map[int64]int
 }
 
 func GetWeeks(client *http.Client, key string, season int) (WeekCollection, error) {
@@ -38,7 +39,7 @@ func GetWeeks(client *http.Client, key string, season int) (WeekCollection, erro
 
 	f := make([]firestore.Week, len(weeks))
 	refs := make([]*fs.DocumentRef, len(weeks))
-	ids := make(map[uint64]int)
+	ids := make(map[int64]int)
 	for i, w := range weeks {
 		f[i] = w.toFirestore()
 		ids[w.Number] = i
@@ -55,11 +56,15 @@ func (wc WeekCollection) Ref(i int) *fs.DocumentRef {
 	return wc.refs[i]
 }
 
-func (wc WeekCollection) Datum(i int) interface{} {
-	return wc.weeks[i]
+func (wc WeekCollection) ID(i int) int64 {
+	return wc.weeks[i].Number
 }
 
-func (wc WeekCollection) RefByID(id uint64) (*fs.DocumentRef, bool) {
+func (wc WeekCollection) Datum(i int) interface{} {
+	return wc.fsWeeks[i]
+}
+
+func (wc WeekCollection) RefByID(id int64) (*fs.DocumentRef, bool) {
 	if i, ok := wc.ids[id]; ok {
 		return wc.refs[i], true
 	}
@@ -83,8 +88,22 @@ func (wc WeekCollection) LinkRefs(sr *fs.DocumentRef, col *fs.CollectionRef) err
 }
 
 func (wc WeekCollection) Select(n int) (WeekCollection, bool) {
-	if i, ok := wc.ids[uint64(n)]; ok {
-		return WeekCollection{weeks: wc.weeks[i : i+1], fsWeeks: wc.fsWeeks[i : i+1], refs: wc.refs[i : i+1], ids: map[uint64]int{uint64(n): i}}, true
+	if i, ok := wc.ids[int64(n)]; ok {
+		return WeekCollection{weeks: wc.weeks[i : i+1], fsWeeks: wc.fsWeeks[i : i+1], refs: wc.refs[i : i+1], ids: map[int64]int{int64(n): i}}, true
 	}
 	return WeekCollection{}, false
+}
+
+func (wc WeekCollection) FprintDatum(w io.Writer, i int) (int, error) {
+	return fmt.Fprint(w, wc.fsWeeks[i].String())
+}
+
+func (wc WeekCollection) FirstStartTime() time.Time {
+	first := wc.weeks[0].FirstGameStart
+	for i := 1; i < len(wc.fsWeeks); i++ {
+		if wc.weeks[i].FirstGameStart.Before(first) {
+			first = wc.weeks[i].FirstGameStart
+		}
+	}
+	return first
 }

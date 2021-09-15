@@ -3,6 +3,7 @@ package cfbdata
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -11,7 +12,7 @@ import (
 )
 
 type Team struct {
-	ID           uint64   `json:"id"`
+	ID           int64    `json:"id"`
 	School       string   `json:"school"`
 	Mascot       *string  `json:"mascot"`
 	Abbreviation *string  `json:"abbreviation"`
@@ -22,7 +23,7 @@ type Team struct {
 	AltColor     *string  `json:"alt_color"`
 	Logos        []string `json:"logos"`
 	Location     struct {
-		VenueID *uint64 `json:"venue_id"`
+		VenueID *int64 `json:"venue_id"`
 	}
 }
 
@@ -100,7 +101,7 @@ type TeamCollection struct {
 	teams   []Team
 	fsTeams []firestore.Team
 	refs    []*fs.DocumentRef
-	ids     map[uint64]int
+	ids     map[int64]int
 }
 
 // Len returns the number of weeks in the collection
@@ -112,11 +113,15 @@ func (tc TeamCollection) Ref(i int) *fs.DocumentRef {
 	return tc.refs[i]
 }
 
-func (tc TeamCollection) Datum(i int) interface{} {
-	return tc.teams[i]
+func (tc TeamCollection) ID(i int) int64 {
+	return tc.teams[i].ID
 }
 
-func (tc TeamCollection) RefByID(id uint64) (*fs.DocumentRef, bool) {
+func (tc TeamCollection) Datum(i int) interface{} {
+	return tc.fsTeams[i]
+}
+
+func (tc TeamCollection) RefByID(id int64) (*fs.DocumentRef, bool) {
 	if i, ok := tc.ids[id]; ok {
 		return tc.refs[i], true
 	}
@@ -135,19 +140,19 @@ func GetTeams(client *http.Client, key string) (TeamCollection, error) {
 		return TeamCollection{}, fmt.Errorf("failed to unmarshal teams response body: %v", err)
 	}
 
-	// Filter out worthless teams
-	n := 0
-	for _, t := range teams {
-		if t.ID < 100000 { // above 100000 are historical teams
-			teams[n] = t
-			n++
-		}
-	}
-	teams = teams[:n]
+	// // Filter out worthless teams
+	// n := 0
+	// for _, t := range teams {
+	// 	if t.ID < 100000 { // above 100000 are historical teams
+	// 		teams[n] = t
+	// 		n++
+	// 	}
+	// }
+	// teams = teams[:n]
 
 	f := make([]firestore.Team, len(teams))
 	refs := make([]*fs.DocumentRef, len(teams))
-	ids := make(map[uint64]int)
+	ids := make(map[int64]int)
 	for i, t := range teams {
 		f[i] = t.toFirestore()
 		ids[t.ID] = i
@@ -173,4 +178,8 @@ func (tc TeamCollection) LinkRefs(vc VenueCollection, col *fs.CollectionRef) err
 		tc.refs[i] = col.Doc(fmt.Sprintf("%d", id))
 	}
 	return nil
+}
+
+func (tc TeamCollection) FprintDatum(w io.Writer, i int) (int, error) {
+	return fmt.Fprint(w, tc.fsTeams[i].String())
 }

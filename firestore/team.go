@@ -1,6 +1,10 @@
 package firestore
 
-import "cloud.google.com/go/firestore"
+import (
+	"strings"
+
+	"cloud.google.com/go/firestore"
+)
 
 // Team represents an NCAA football team.
 type Team struct {
@@ -51,4 +55,20 @@ type Team struct {
 
 	// Venue is a reference to a Venue document.
 	Venue *firestore.DocumentRef `firestore:"venue"`
+}
+
+func (t Team) String() string {
+	var sb strings.Builder
+	sb.WriteString("Team\n")
+	ss := make([]string, 0)
+	ss = append(ss, treeString("Abbreviation", 0, false, t.Abbreviation))
+	ss = append(ss, treeStringSlice("ShortNames", 0, false, t.ShortNames))
+	ss = append(ss, treeStringSlice("OtherNames", 0, false, t.OtherNames))
+	ss = append(ss, treeString("School", 0, false, t.School))
+	ss = append(ss, treeString("Mascot", 0, false, t.Mascot))
+	ss = append(ss, treeStringSlice("Colors", 0, false, t.Colors))
+	ss = append(ss, treeStringSlice("Logos", 0, false, t.Logos))
+	ss = append(ss, treeRef("Venue", 0, true, t.Venue))
+	sb.WriteString(strings.Join(ss, "\n"))
+	return sb.String()
 }
