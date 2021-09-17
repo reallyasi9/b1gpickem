@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -15,52 +14,58 @@ import (
 	"github.com/reallyasi9/b1gpickem/firestore"
 )
 
-// APIKey is a key from collegefootballdata.com
-var APIKey string
+// seasonFlagSet is a flag.FlagSet for parsing the setup-season subcommand.
+var seasonFlagSet *flag.FlagSet
 
-// ProjectID is the Google Cloud Project ID where the season data will be loaded.
-var ProjectID string
-
-// Force, if set, forcefully overwrite data in Firestore instead of failing if the documents already exist
-var Force bool
-
-// Season is the year of the start of the season.
-var Season int
-
-// DryRun, if true, will print the firestore objects to console rather than writing them to firestore.
-var DryRun bool
-
-func usage() {
-	fmt.Fprintf(flag.CommandLine.Output(), `Usage: setup-season [flags] <Season>
-
-Set up a new season in Firestore. Downloades data from api.collegefootballdata.com and creates a season with teams, venues, weeks, and games collections.
-
+// seasonUsage is the usage documentation for the setup-season subcommand.
+func seasonUsage() {
+	fmt.Fprintf(flag.CommandLine.Output(), `Usage: b1gtool [global-flags] setup-season [flags] <apikey> <season>
+	
+Set up a new season in Firestore. Downloads data from api.collegefootballdata.com and creates a season with teams, venues, weeks, and games collections.
+	
 Arguments:
-  Season int
-    	Year to set up (e.g., %d).
+  apikey string
+        API key to access CollegeFootballData.com data.
+  season int
+        Year to set up (e.g., %d).
 Flags:
 `, time.Now().Year())
 
+	seasonFlagSet.PrintDefaults()
+
+	fmt.Fprint(flag.CommandLine.Output(), "Global Flags:\n")
+
 	flag.PrintDefaults()
+
 }
 
 func init() {
-	flag.Usage = usage
-
-	flag.StringVar(&APIKey, "key", "", "API key for collegefootballdata.com.")
-	flag.StringVar(&ProjectID, "project", fs.DetectProjectID, "Google Cloud Project ID.  If equal to the empty string, the environment variable GCP_PROJECT will be used.")
-	flag.BoolVar(&Force, "force", false, "Force overwrite of data in Firestore with the SET command rather than failing if the data already exists.")
-	flag.BoolVar(&DryRun, "dryrun", false, "Do not write to firestore, but print to console instead.")
+	seasonFlagSet = flag.NewFlagSet("setup-season", flag.ExitOnError)
+	seasonFlagSet.SetOutput(flag.CommandLine.Output())
+	seasonFlagSet.Usage = seasonUsage
 }
 
-func main() {
-	parseCommandLine()
+func setupSeason() {
+	err := seasonFlagSet.Parse(flag.Args()[1:])
+	if err != nil {
+		log.Fatalf("Failed to parse setup-season arguments: %v", err)
+	}
+	if seasonFlagSet.NArg() < 2 {
+		seasonFlagSet.Usage()
+		log.Fatal("API key and season arguments not supplied")
+	}
+	if seasonFlagSet.NArg() > 2 {
+		seasonFlagSet.Usage()
+		log.Fatal("Too many arguments supplied")
+	}
+	apiKey := seasonFlagSet.Arg(0)
+
+	year, err := strconv.Atoi(seasonFlagSet.Arg(1))
+	if err != nil {
+		log.Fatalf("Failed to parse season: %v", err)
+	}
+
 	ctx := context.Background()
-	setupSeason(ctx, Season, Force, DryRun)
-}
-
-func setupSeason(ctx context.Context, year int, force, dryRun bool) {
-
 	fsClient, err := fs.NewClient(ctx, ProjectID)
 	if err != nil {
 		panic(err)
@@ -68,25 +73,25 @@ func setupSeason(ctx context.Context, year int, force, dryRun bool) {
 
 	httpClient := http.DefaultClient
 
-	weeks, err := cfbdata.GetWeeks(httpClient, APIKey, year)
+	weeks, err := cfbdata.GetWeeks(httpClient, apiKey, year)
 	if err != nil {
 		panic(err)
 	}
 	log.Printf("Loaded %d weeks\n", weeks.Len())
 
-	venues, err := cfbdata.GetVenues(httpClient, APIKey)
+	venues, err := cfbdata.GetVenues(httpClient, apiKey)
 	if err != nil {
 		panic(err)
 	}
 	log.Printf("Loaded %d venues\n", venues.Len())
 
-	teams, err := cfbdata.GetTeams(httpClient, APIKey)
+	teams, err := cfbdata.GetTeams(httpClient, apiKey)
 	if err != nil {
 		panic(err)
 	}
 	log.Printf("Loaded %d teams\n", teams.Len())
 
-	games, err := cfbdata.GetGames(httpClient, APIKey, year)
+	games, err := cfbdata.GetGames(httpClient, apiKey, year)
 	if err != nil {
 		panic(err)
 	}
@@ -118,7 +123,7 @@ func setupSeason(ctx context.Context, year int, force, dryRun bool) {
 		gamesByWeek[id] = gs
 	}
 
-	if dryRun {
+	if DryRun {
 		log.Println("DRY RUN: would write the following to firestore:")
 		log.Printf("Season:\n%s: %+v\n---\n", seasonRef.Path, season)
 		log.Println("Venues:")
@@ -143,7 +148,7 @@ func setupSeason(ctx context.Context, year int, force, dryRun bool) {
 	writeFunc := func(tx *fs.Transaction, ref *fs.DocumentRef, d interface{}) error {
 		return tx.Create(ref, d)
 	}
-	if force {
+	if Force {
 		log.Println("Forcing overwrite with SET command")
 		writeFunc = func(tx *fs.Transaction, ref *fs.DocumentRef, d interface{}) error {
 			return tx.Set(ref, d)
@@ -189,31 +194,5 @@ func setupSeason(ctx context.Context, year int, force, dryRun bool) {
 				panic(err)
 			}
 		}
-	}
-
-	log.Println("Done.")
-}
-
-func parseCommandLine() {
-	flag.Parse()
-
-	if flag.NArg() != 1 {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if APIKey == "" {
-		log.Println("APIKey not given: this will probably fail.")
-	}
-	if ProjectID == "" {
-		ProjectID = os.Getenv("GCP_PROJECT")
-	}
-	if ProjectID == "" {
-		log.Println("-project not given and environment variable GCP_PROJECT not found: this will probably fail.")
-	}
-
-	var err error // avoid shadowing
-	Season, err = strconv.Atoi(flag.Arg(0))
-	if err != nil {
-		panic(err)
 	}
 }
