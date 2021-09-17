@@ -9,7 +9,7 @@ import (
 type Model struct {
 	// System is a long descriptive name of the model.
 	// It is human-readable, and is chiefly used to identify the model on ThePredictionTracker.com public-facing web pages.
-	System string `firestore:"name,omitempty"`
+	System string `firestore:"system,omitempty"`
 
 	// ShortName is a short label given to the model.
 	// It is not always human-readable, and is used to identify the model on ThePredictionTracker.com's downloadable CSV files.
@@ -22,11 +22,6 @@ type ModelPerformance struct {
 	// Rank is the weekly performance rank of the model as calculated by ThePredictionTracker.com using `PercentCorrect`.
 	// The best performing model of the season to date is given `Rank = 1`.
 	Rank int `firestore:"rank"`
-
-	// System is a long descriptive name of the model.
-	// It is human-readable, and is chiefly used to identify the model on ThePredictionTracker.com public-facing web pages.
-	// It matches the same named field of the `Model` struct.
-	System string `firestore:"system"`
 
 	// PercentCorrect is the percent of games the model made a prediction for that were predicted correctly.
 	// Because different models choose to predict only certain games every week, the denominator of this percentage
@@ -82,13 +77,16 @@ type ModelPerformance struct {
 	Model *fs.DocumentRef `firestore:"model"` // discovered
 }
 
-// Prediction is a prediction made by a certain Model.
-type Prediction struct {
+// ModelPrediction is a prediction made by a certain Model for a certain Game.
+type ModelPrediction struct {
+	// Model is a reference to the model that is making the prediction.
+	Model *fs.DocumentRef `firestore:"model"`
+
 	// HomeTeam is a reference to the Firestore Team the model thinks is the home team for the game.
-	HomeTeam *fs.DocumentRef `firestore:"home"`
+	HomeTeam *fs.DocumentRef `firestore:"home_team"`
 
 	// AwayTeam is a reference to the Firestore Team the model thinks is the away team for the game.
-	AwayTeam *fs.DocumentRef `firestore:"road"`
+	AwayTeam *fs.DocumentRef `firestore:"away_team"`
 
 	// NeutralSite flags if the model thinks the teams are playing at a neutral site.
 	NeutralSite bool `firestore:"neutral"`
@@ -96,4 +94,22 @@ type Prediction struct {
 	// Spread is the predicted number of points in favor of `HomeTeam`.
 	// Negative points reflect a prediction of `AwayTeam` winning.
 	Spread float64 `firestore:"spread"`
+}
+
+// ModelTeamPoints represents a modeled number of points that a given team is expected to score against an average opponent.
+// Some models model the team's scoring potential directly rather than the spread of a given game. This is extremely useful
+// for predicting the spread of unscheduled or hypothetical games that other models do not attempt to predict.
+// Only Sagarin and FPI models team scoring potential directly.
+type ModelTeamPoints struct {
+	// Model is a reference to the model that generates these scores.
+	Model *fs.DocumentRef `firestore:"model"`
+
+	// Team is a reference to the team.
+	Team *fs.DocumentRef `firestore:"team"`
+
+	// Points are the predicted points against an average team at a neutral site.
+	Points float64 `firestore:"points"`
+
+	// HomeAdvantage are the number of points added to the predicted points if this team is the home team.
+	HomeAdvantage float64 `firestore:"home_advantage"`
 }
