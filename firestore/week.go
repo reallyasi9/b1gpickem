@@ -2,18 +2,22 @@ package firestore
 
 import (
 	"strings"
-
-	"cloud.google.com/go/firestore"
+	"time"
 )
 
 type Week struct {
-	// Picks are references to Firestore documents of the picker's picks for this week, indexed by LukeName.
-	Picks map[string]*firestore.DocumentRef `firestore:"picks"`
+	// Number is the week number.
+	Number int `firestore:"number"`
+
+	// FirstGameStart is the start time of the first game of the week.
+	FirstGameStart time.Time `firestore:"first_game_start"`
 }
 
 func (w Week) String() string {
 	var sb strings.Builder
 	sb.WriteString("Week\n")
-	sb.WriteString(treeStringRefMap("Picks", 0, true, w.Picks))
+	sb.WriteString(treeInt("Number", 0, false, w.Number))
+	sb.WriteRune('\n')
+	sb.WriteString(treeString("FirstGameStart", 0, true, w.FirstGameStart.GoString()))
 	return sb.String()
 }

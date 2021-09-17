@@ -72,7 +72,10 @@ func (wc WeekCollection) RefByID(id int64) (*fs.DocumentRef, bool) {
 }
 
 func (w Week) toFirestore() firestore.Week {
-	return firestore.Week{}
+	return firestore.Week{
+		Number:         int(w.Number),
+		FirstGameStart: w.FirstGameStart,
+	}
 }
 
 func (wc WeekCollection) LinkRefs(col *fs.CollectionRef) error {
