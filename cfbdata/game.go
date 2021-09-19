@@ -45,8 +45,32 @@ type GameCollection struct {
 	ids     map[int64]int
 }
 
-func GetGames(client *http.Client, key string, year int) (GameCollection, error) {
+func GetAllGames(client *http.Client, key string, year int) (GameCollection, error) {
 	query := fmt.Sprintf("?year=%d", year)
+	body, err := doRequest(client, key, "https://api.collegefootballdata.com/games"+query)
+	if err != nil {
+		return GameCollection{}, fmt.Errorf("failed to do game request: %v", err)
+	}
+
+	var games []Game
+	err = json.Unmarshal(body, &games)
+	if err != nil {
+		return GameCollection{}, fmt.Errorf("failed to unmarshal games response body: %v", err)
+	}
+
+	f := make([]firestore.Game, len(games))
+	refs := make([]*fs.DocumentRef, len(games))
+	ids := make(map[int64]int)
+	for i, g := range games {
+		f[i] = g.toFirestore()
+		ids[g.ID] = i
+	}
+
+	return GameCollection{games: games, fsGames: f, refs: refs, ids: ids}, nil
+}
+
+func GetGames(client *http.Client, key string, year int, week int) (GameCollection, error) {
+	query := fmt.Sprintf("?year=%d&week=%d", year, week)
 	body, err := doRequest(client, key, "https://api.collegefootballdata.com/games"+query)
 	if err != nil {
 		return GameCollection{}, fmt.Errorf("failed to do game request: %v", err)

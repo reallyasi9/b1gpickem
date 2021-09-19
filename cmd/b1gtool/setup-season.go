@@ -91,7 +91,7 @@ func setupSeason() {
 	}
 	log.Printf("Loaded %d teams\n", teams.Len())
 
-	games, err := cfbdata.GetGames(httpClient, apiKey, year)
+	games, err := cfbdata.GetAllGames(httpClient, apiKey, year)
 	if err != nil {
 		panic(err)
 	}

@@ -49,7 +49,13 @@ func DryRun(w io.Writer, c Collection) (int, error) {
 	n := 0
 	for i := 0; i < c.Len(); i++ {
 		ref := c.Ref(i)
-		nn, err := fmt.Fprintln(w, ref.Path)
+		nn := 0
+		var err error
+		if ref == nil {
+			nn, err = fmt.Println(w, "(nil ref)")
+		} else {
+			nn, err = fmt.Fprintln(w, ref.Path)
+		}
 		n += nn
 		if err != nil {
 			return n, err

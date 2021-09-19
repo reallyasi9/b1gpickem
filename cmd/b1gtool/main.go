@@ -22,7 +22,9 @@ func usage() {
 B1GTool: a command-line tool for managing B1G Pick 'Em data and picks.
 
 Commands:
+  help
   setup-season
+  update-games
 
 Global Flags:
 `)
@@ -45,6 +47,8 @@ func main() {
 		help()
 	case "setup-season":
 		setupSeason()
+	case "update-games":
+		updateGames()
 	default:
 		flag.Usage()
 		log.Fatalf("Command '%s' not understood", flag.Arg(0))

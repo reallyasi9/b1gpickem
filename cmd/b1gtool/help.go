@@ -35,6 +35,8 @@ func help() {
 		helpFlagSet.Usage()
 	case "setup-season":
 		seasonFlagSet.Usage()
+	case "update-games":
+		ugFlagSet.Usage()
 	case "":
 		fallthrough
 	default:
