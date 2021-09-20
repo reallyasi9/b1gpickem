@@ -129,7 +129,7 @@ func (tc TeamCollection) RefByID(id int64) (*fs.DocumentRef, bool) {
 }
 
 func GetTeams(client *http.Client, key string) (TeamCollection, error) {
-	body, err := doRequest(client, key, "https://api.collegefootballdata.com/teams")
+	body, err := DoRequest(client, key, "https://api.collegefootballdata.com/teams")
 	if err != nil {
 		return TeamCollection{}, fmt.Errorf("failed to do teams request: %v", err)
 	}

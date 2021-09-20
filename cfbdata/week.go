@@ -26,7 +26,7 @@ type WeekCollection struct {
 }
 
 func GetWeeks(client *http.Client, key string, season int) (WeekCollection, error) {
-	body, err := doRequest(client, key, fmt.Sprintf("https://api.collegefootballdata.com/calendar?year=%d", season))
+	body, err := DoRequest(client, key, fmt.Sprintf("https://api.collegefootballdata.com/calendar?year=%d", season))
 	if err != nil {
 		return WeekCollection{}, fmt.Errorf("failed to do calendar request: %v", err)
 	}

@@ -25,6 +25,7 @@ Commands:
   help
   setup-season
   update-games
+  update-predictions
 
 Global Flags:
 `)
@@ -49,6 +50,8 @@ func main() {
 		setupSeason()
 	case "update-games":
 		updateGames()
+	case "update-predictions":
+		updatePredictions()
 	default:
 		flag.Usage()
 		log.Fatalf("Command '%s' not understood", flag.Arg(0))

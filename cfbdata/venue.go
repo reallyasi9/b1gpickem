@@ -57,7 +57,7 @@ type VenueCollection struct {
 }
 
 func GetVenues(client *http.Client, key string) (VenueCollection, error) {
-	body, err := doRequest(client, key, "https://api.collegefootballdata.com/venues")
+	body, err := DoRequest(client, key, "https://api.collegefootballdata.com/venues")
 	if err != nil {
 		return VenueCollection{}, fmt.Errorf("failed to do venues request: %v", err)
 	}

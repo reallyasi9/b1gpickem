@@ -37,6 +37,8 @@ func help() {
 		seasonFlagSet.Usage()
 	case "update-games":
 		ugFlagSet.Usage()
+	case "update-predictions":
+		upFlagSet.Usage()
 	case "":
 		fallthrough
 	default:

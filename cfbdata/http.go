@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-func doRequest(client *http.Client, key string, url string) ([]byte, error) {
+func DoRequest(client *http.Client, key string, url string) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build request: %v", err)

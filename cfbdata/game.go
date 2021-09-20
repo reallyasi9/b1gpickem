@@ -47,7 +47,7 @@ type GameCollection struct {
 
 func GetAllGames(client *http.Client, key string, year int) (GameCollection, error) {
 	query := fmt.Sprintf("?year=%d", year)
-	body, err := doRequest(client, key, "https://api.collegefootballdata.com/games"+query)
+	body, err := DoRequest(client, key, "https://api.collegefootballdata.com/games"+query)
 	if err != nil {
 		return GameCollection{}, fmt.Errorf("failed to do game request: %v", err)
 	}
@@ -71,7 +71,7 @@ func GetAllGames(client *http.Client, key string, year int) (GameCollection, err
 
 func GetGames(client *http.Client, key string, year int, week int) (GameCollection, error) {
 	query := fmt.Sprintf("?year=%d&week=%d", year, week)
-	body, err := doRequest(client, key, "https://api.collegefootballdata.com/games"+query)
+	body, err := DoRequest(client, key, "https://api.collegefootballdata.com/games"+query)
 	if err != nil {
 		return GameCollection{}, fmt.Errorf("failed to do game request: %v", err)
 	}
