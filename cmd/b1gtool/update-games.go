@@ -29,6 +29,7 @@ Arguments:
         Year to set up.
   week int
         Week(s) to update. Multiple weeks allowed.
+
 Flags:
 `)
 

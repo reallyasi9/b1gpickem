@@ -1,6 +1,8 @@
 package firestore
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
 	"cloud.google.com/go/firestore"
@@ -71,4 +73,26 @@ func (t Team) String() string {
 	ss = append(ss, treeRef("Venue", 0, true, t.Venue))
 	sb.WriteString(strings.Join(ss, "\n"))
 	return sb.String()
+}
+
+// GetTeams returns a collection of teams for a given season.
+func GetTeams(ctx context.Context, client *firestore.Client, season *firestore.DocumentRef) ([]Team, []*firestore.DocumentRef, error) {
+	refs, err := season.Collection("teams").DocumentRefs(ctx).GetAll()
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getting team document refs for seasons %s: %w", season.ID, err)
+	}
+	teams := make([]Team, len(refs))
+	for i, r := range refs {
+		ss, err := r.Get(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error getting team snapshot %s: %w", r.ID, err)
+		}
+		var t Team
+		err = ss.DataTo(&t)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error getting team snapshot data %s: %w", r.ID, err)
+		}
+		teams[i] = t
+	}
+	return teams, refs, nil
 }

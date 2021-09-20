@@ -2,7 +2,10 @@ module github.com/reallyasi9/b1gpickem
 
 go 1.17
 
-require cloud.google.com/go/firestore v1.5.0
+require (
+	cloud.google.com/go/firestore v1.5.0
+	github.com/hbollon/go-edlib v1.4.0
+)
 
 require (
 	cloud.google.com/go v0.90.0 // indirect
