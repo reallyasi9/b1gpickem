@@ -70,7 +70,7 @@ func updatePredictions() {
 		log.Fatal("Season and week arguments not supplied")
 	}
 	year := upFlagSet.Arg(0) // technically, strings are okay
-	// week := upFlagSet.Arg(1)
+	week := upFlagSet.Arg(1)
 
 	pt, err := newPredictionTable(predCSV)
 	if err != nil {
@@ -95,7 +95,81 @@ func updatePredictions() {
 		log.Fatalf("Failed to match teams to refs: %v", err)
 	}
 
-	fmt.Print(tps)
+	weekRef := seasonRef.Collection("weeks").Doc(week)
+	games, refs, err := firestore.GetGames(ctx, fsClient, weekRef)
+	if err != nil {
+		log.Fatalf("Failed to get games: %v", err)
+	}
+
+	gameLookup := newGameRefsByTeams(games, refs)
+	type refPred struct {
+		ref  *fs.DocumentRef
+		pred firestore.ModelPrediction
+	}
+	predictions := make([]refPred, 0)
+	for i, tp := range tps {
+		gref, swap, ok := gameLookup.Lookup(tp)
+		homeRef := tp.Home
+		awayRef := tp.Away
+		if !ok {
+			log.Fatalf("Failed to get game with matchup %s @ %s", tp.Away.ID, tp.Home.ID)
+		}
+		if swap {
+			log.Printf("Game %s (%s @ %s) has home/away swapped between predictions and ground truth", gref.ID, tp.Home.ID, tp.Away.ID)
+			homeRef, awayRef = awayRef, homeRef
+		}
+		// TODO: match model to prediction
+		col := gref.Collection("predictions")
+		for model := range pt.predictions {
+			if pt.missing[model][i] {
+				continue
+			}
+			p := pt.predictions[model][i]
+			mp := firestore.ModelPrediction{
+				Model:       nil, // TODO: lookup
+				HomeTeam:    homeRef,
+				AwayTeam:    awayRef,
+				NeutralSite: true, // TODO: lookup
+				Spread:      p,
+			}
+			ref := col.Doc(model)
+			predictions = append(predictions, refPred{ref: ref, pred: mp})
+		}
+	}
+
+	if DryRun {
+		log.Print("DRY RUN: would write the following:")
+		log.Print(predictions)
+		return
+	}
+
+	for i := 0; i < len(predictions); i += 500 {
+		ul := i + 500
+		if ul > len(predictions) {
+			ul = len(predictions)
+		}
+		subset := predictions[i:ul]
+		err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
+			for _, rp := range subset {
+				if Force {
+					err := t.Set(rp.ref, &rp.pred)
+					if err != nil {
+						return err
+					}
+				} else {
+					err := t.Create(rp.ref, &rp.pred)
+					if err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		})
+
+		if err != nil {
+			log.Fatalf("Writing to firestore failed: %v", err)
+		}
+	}
 }
 
 // predictionTable collects the predictions for a set of models in a nice format.
@@ -235,7 +309,7 @@ func (pt *predictionTable) teamPairs(lookup *teamRefsByName) ([]teamPair, error)
 	return tps, nil
 }
 
-// TeamRefsByName is a type for quick lookups of teams by name.
+// teamRefsByName is a type for quick lookups of teams by name.
 type teamRefsByName struct {
 	names  []string
 	byName map[string]*fs.DocumentRef
@@ -266,4 +340,51 @@ func (t *teamRefsByName) Lookup(name string) (*fs.DocumentRef, []string, bool) {
 		return nil, nil, false
 	}
 	return nil, closest, false
+}
+
+// gameRefsByTeams is a struct for quick lookups of games by home/away teams.
+type gameRefsByTeams struct {
+	homeTeams map[string]*fs.DocumentRef
+	awayTeams map[string]*fs.DocumentRef
+}
+
+func newGameRefsByTeams(games []firestore.Game, refs []*fs.DocumentRef) *gameRefsByTeams {
+	homeTeams := make(map[string]*fs.DocumentRef)
+	awayTeams := make(map[string]*fs.DocumentRef)
+	for i, g := range games {
+		homeTeams[g.HomeTeam.ID] = refs[i]
+		awayTeams[g.AwayTeam.ID] = refs[i]
+	}
+	return &gameRefsByTeams{
+		homeTeams: homeTeams,
+		awayTeams: awayTeams,
+	}
+}
+
+func (g *gameRefsByTeams) Lookup(tp teamPair) (game *fs.DocumentRef, swap bool, ok bool) {
+	hgRef, hOK := g.homeTeams[tp.Home.ID]
+	agRef, aOK := g.awayTeams[tp.Away.ID]
+	swap = false
+	if hOK && aOK && hgRef == agRef {
+		game = hgRef
+		ok = true
+		return
+	}
+	if hOK && aOK && hgRef != agRef {
+		game = nil
+		ok = false
+		return
+	}
+
+	// Try swapping home and away
+	hgRef, hOK = g.awayTeams[tp.Home.ID]
+	agRef, aOK = g.homeTeams[tp.Away.ID]
+	swap = true
+	if hOK && aOK && hgRef == agRef {
+		game = hgRef
+		ok = true
+		return
+	}
+
+	return nil, false, false
 }

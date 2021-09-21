@@ -252,3 +252,25 @@ func (g SlateGame) BuildSlateRow(ctx context.Context) ([]string, error) {
 
 	return output, nil
 }
+
+// GetGames returns a collection of teams for a given season.
+func GetGames(ctx context.Context, client *firestore.Client, week *firestore.DocumentRef) ([]Game, []*firestore.DocumentRef, error) {
+	refs, err := week.Collection("games").DocumentRefs(ctx).GetAll()
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getting game document refs for week %s: %w", week.ID, err)
+	}
+	games := make([]Game, len(refs))
+	for i, r := range refs {
+		ss, err := r.Get(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error getting game snapshot %s: %w", r.ID, err)
+		}
+		var g Game
+		err = ss.DataTo(&g)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error getting game snapshot data %s: %w", r.ID, err)
+		}
+		games[i] = g
+	}
+	return games, refs, nil
+}

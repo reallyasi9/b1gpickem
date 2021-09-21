@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 
 	fs "cloud.google.com/go/firestore"
@@ -44,6 +45,39 @@ func coalesceString(s *string, replacement string) string {
 	return *s
 }
 
+var commonAbbreviations = map[*regexp.Regexp][]string{
+	regexp.MustCompile(`\bSt(\.|ate)?\b`):       {"State", "St", "St."},                  // Appalachian State
+	regexp.MustCompile(`\bMiss(\.|issippi)\b`):  {"Mississippi", "Miss", "Miss."},        // Southern Mississippi
+	regexp.MustCompile(`(?i)\(Oh(\.|io)?\)`):    {"(Ohio)", "(OH)", "(OH.)", "(NTM)"},    // Miami (NTM)
+	regexp.MustCompile(`(?i)\(Fl(\.|orida)?\)`): {"(Florida)", "(FL)", "(FL.)", "(YTM)"}, // Miami (YTM)
+	regexp.MustCompile(`\bMichigan\b`):          {"Mich."},                               // Central Michigan
+	regexp.MustCompile(`\bInternational\b`):     {"Intl."},                               // Florida International
+	regexp.MustCompile(`\bTennessee\b`):         {"Tenn."},                               // Middle Tennessee State
+	regexp.MustCompile(`\bUMass\b`):             {"Massachusetts"},                       // All the Massachusettses
+	regexp.MustCompile(`^UL (.*)$`):             {"Louisiana-${1}"},                      // Louisianas Lafayette and Monroe
+	regexp.MustCompile(`^Troy$`):                {"Troy St."},                            // Troy. Kill me.
+	regexp.MustCompile(`^Kent State$`):          {"Kent"},                                // Kent. Kill me.
+	regexp.MustCompile(`Hawai'i`):               {"Hawaii"},                              // Would it kill you to add the appostrophe?
+	regexp.MustCompile(`\bVirginia\b`):          {"Va."},                                 // West Virginia
+}
+
+func replaceCommonAbbreviations(ss []string) []string {
+	// defensive copy
+	out := make([]string, len(ss))
+	copy(out, ss)
+	for _, s := range ss {
+		for rx, rpls := range commonAbbreviations {
+			if !rx.MatchString(s) {
+				continue
+			}
+			for _, rpl := range rpls {
+				out = append(out, rx.ReplaceAllString(s, rpl))
+			}
+		}
+	}
+	return out
+}
+
 func distinctStrings(ss []string) []string {
 	// defensive copy
 	result := make([]string, len(ss))
@@ -51,12 +85,11 @@ func distinctStrings(ss []string) []string {
 	distinct := make(map[string]struct{})
 	n := 0
 	for _, s := range result {
-		if _, ok := distinct[s]; ok {
+		if _, ok := distinct[s]; !ok {
+			distinct[s] = struct{}{}
 			result[n] = s
 			n++
-			continue
 		}
-		distinct[s] = struct{}{}
 	}
 	result = result[:n]
 	return result
@@ -80,7 +113,8 @@ func abbreviate(s string) string {
 // ToFirestore does not link the Venue--that has to be done with an external lookup.
 func (t Team) toFirestore() firestore.Team {
 	otherNames := make([]string, 0)
-	otherNames = appendNonNilStrings(otherNames, t.AltName1, t.AltName2, t.AltName3)
+	otherNames = appendNonNilStrings(otherNames, t.AltName1, t.AltName2, t.AltName3, &t.School)
+	otherNames = replaceCommonAbbreviations(otherNames)
 	otherNames = distinctStrings(otherNames)
 	colors := make([]string, 0)
 	colors = appendNonNilStrings(colors, t.Color, t.AltColor)
