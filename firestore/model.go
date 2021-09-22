@@ -1,6 +1,9 @@
 package firestore
 
 import (
+	"context"
+	"fmt"
+
 	fs "cloud.google.com/go/firestore"
 )
 
@@ -15,6 +18,28 @@ type Model struct {
 	// It is not always human-readable, and is used to identify the model on ThePredictionTracker.com's downloadable CSV files.
 	// All begin with the string "line".
 	ShortName string `firestore:"short_name,omitempty"`
+}
+
+// GetModels returns a collection of models.
+func GetModels(ctx context.Context, client *fs.Client) ([]Model, []*fs.DocumentRef, error) {
+	refs, err := client.Collection("models").DocumentRefs(ctx).GetAll()
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getting model document refs: %w", err)
+	}
+	models := make([]Model, len(refs))
+	for i, r := range refs {
+		ss, err := r.Get(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error getting model snapshot %s: %w", r.ID, err)
+		}
+		var m Model
+		err = ss.DataTo(&m)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error getting model snapshot data %s: %w", r.ID, err)
+		}
+		models[i] = m
+	}
+	return models, refs, nil
 }
 
 // ModelPerformance contains information about how the model has performed to date during a given NCAA football season.

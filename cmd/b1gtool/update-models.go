@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +12,9 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+
+	fs "cloud.google.com/go/firestore"
+	"github.com/reallyasi9/b1gpickem/firestore"
 )
 
 // The subcommand update-modes the performance to date of the various prediction models from https://www.thepredictiontracker.com/ncaaresults.php.
@@ -65,37 +69,41 @@ func updateModels() {
 	_ = umFlagSet.Arg(0) // technically, strings are okay
 	_ = umFlagSet.Arg(1)
 
-	pt, err := newPerformanceTable(perfURL)
+	ctx := context.Background()
+	fsClient, err := fs.NewClient(ctx, ProjectID)
+	if err != nil {
+		log.Fatalf("Error creating firestore client: %v", err)
+	}
+
+	models, refs, err := firestore.GetModels(ctx, fsClient)
+	if err != nil {
+		log.Fatalf("Error getting models: %v", err)
+	}
+
+	lookup := make(modelRefsByName)
+	for i := range models {
+		model := models[i]
+		ref := refs[i]
+		lookup[model.System] = ref
+	}
+
+	pt, err := newPerformanceTable(perfURL, lookup)
 	if err != nil {
 		log.Fatalf("Error parsing performance table: %v", err)
 	}
 
+	// TODO: the performances have to be written somewhere...  like season/week/n, in a document that has a timestamp, maybe?
 	fmt.Print(pt)
 }
 
-type systemPerformance struct {
-	Rank                   int
-	System                 string
-	PctCorrect             float64
-	PctAgainstSpread       *float64
-	AbsoluteError          float64
-	Bias                   float64
-	MeanSquareError        float64
-	Games                  int
-	StraightUpWins         int
-	StraightUpLosses       int
-	AgainstTheSpreadWins   *int
-	AgainstTheSpreadLosses *int
-}
-
-type performanceTable []systemPerformance
+type performanceTable []firestore.ModelPerformance
 
 var resultsTableRegex = regexp.MustCompile(`(?ism)<table\s+[^>]+CLASS=['"]results_table['"].*>(.*?)</table>`)
 var headerRegex = regexp.MustCompile(`(?ism)<th.*?>\s*(?:<a.*?>)?\s*(.*?)\s*(?:</a>)?\s*</th>`)
 var rowRegex = regexp.MustCompile(`(?ism)<tr><td.*?>.*?</td></tr>`)
 var valueRegex = regexp.MustCompile(`(?ism)<td.*?>(?:<font.*?>)?(.*?)(?:</font>)?</td>`)
 
-func newPerformanceTable(f string) (*performanceTable, error) {
+func newPerformanceTable(f string, lookup modelRefsByName) (*performanceTable, error) {
 	var rc io.ReadCloser
 	if _, err := url.Parse(f); err == nil {
 		httpClient := http.DefaultClient
@@ -143,47 +151,51 @@ func newPerformanceTable(f string) (*performanceTable, error) {
 			return nil, fmt.Errorf("unable to match values in table row %d", j)
 		}
 
-		perf := systemPerformance{}
+		perf := firestore.ModelPerformance{}
 		for i, val := range values {
 			s := val[1]
 			col := headers[i][1]
 			switch col {
 			case "Pct. Correct": // float64
-				perf.PctCorrect, err = strconv.ParseFloat(s, 64)
+				perf.PercentCorrect, err = strconv.ParseFloat(s, 64)
 			case "Against Spread": // float64
+				f := 1.0
 				if s != "" {
-					var f float64
 					f, err = strconv.ParseFloat(s, 64)
-					perf.PctAgainstSpread = &f
 				}
+				perf.PercentATS = f
 			case "Bias": // float64
 				perf.Bias, err = strconv.ParseFloat(s, 64)
 			case "Mean Square Error": // float64
-				perf.MeanSquareError, err = strconv.ParseFloat(s, 64)
+				perf.MSE, err = strconv.ParseFloat(s, 64)
 			case "Absolute Error": // float64
-				perf.AbsoluteError, err = strconv.ParseFloat(s, 64)
+				perf.MAE, err = strconv.ParseFloat(s, 64)
 			case "games": // int
-				perf.Games, err = strconv.Atoi(s)
+				perf.GamesPredicted, err = strconv.Atoi(s)
 			case "suw": // int
-				perf.StraightUpWins, err = strconv.Atoi(s)
+				perf.Wins, err = strconv.Atoi(s)
 			case "sul": // int
-				perf.StraightUpLosses, err = strconv.Atoi(s)
+				perf.Losses, err = strconv.Atoi(s)
 			case "atsw": // int
+				w := 0
 				if s != "" {
-					var x int
-					x, err = strconv.Atoi(s)
-					perf.AgainstTheSpreadWins = &x
+					w, err = strconv.Atoi(s)
 				}
+				perf.WinsATS = w
 			case "atsl": // int
+				l := 0
 				if s != "" {
-					var x int
-					x, err = strconv.Atoi(s)
-					perf.AgainstTheSpreadLosses = &x
+					l, err = strconv.Atoi(s)
+					perf.LossesATS = l
 				}
 			case "Rank": // int
 				perf.Rank, err = strconv.Atoi(s)
 			case "System": // string
-				perf.System = s
+				model, ok := lookup[s]
+				if !ok {
+					return nil, fmt.Errorf("unable to find model '%s'", s)
+				}
+				perf.Model = model // TODO: LOOK ME UP!
 			default:
 				return nil, fmt.Errorf("column '%s' in row %d not understood", col, j)
 			}
@@ -196,3 +208,5 @@ func newPerformanceTable(f string) (*performanceTable, error) {
 
 	return &pt, nil
 }
+
+type modelRefsByName map[string]*fs.DocumentRef
