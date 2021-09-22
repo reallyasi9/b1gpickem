@@ -39,6 +39,8 @@ func help() {
 		ugFlagSet.Usage()
 	case "update-predictions":
 		upFlagSet.Usage()
+	case "update-models":
+		umFlagSet.Usage()
 	case "":
 		fallthrough
 	default:

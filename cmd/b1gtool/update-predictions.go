@@ -18,8 +18,7 @@ import (
 	"github.com/reallyasi9/b1gpickem/firestore"
 )
 
-// The subcommand update-predictions scrapes both the performance to date of the various prediction models from https://www.thepredictiontracker.com/ncaaresults.php
-// as well as the individual model predictions for each game of the week from https://www.thepredictiontracker.com/ncaapredictions.csv.
+// The subcommand update-predictions scrapes the individual model predictions for each game of the week from https://www.thepredictiontracker.com/ncaapredictions.csv.
 // Only a subset of games are predicted each week (games that have an opening Vegas line).
 
 // upFlagSet is a flag.FlagSet for parsing the update-predictions subcommand.
@@ -102,39 +101,9 @@ func updatePredictions() {
 	}
 
 	gameLookup := newGameRefsByTeams(games, refs)
-	type refPred struct {
-		ref  *fs.DocumentRef
-		pred firestore.ModelPrediction
-	}
-	predictions := make([]refPred, 0)
-	for i, tp := range tps {
-		gref, swap, ok := gameLookup.Lookup(tp)
-		homeRef := tp.Home
-		awayRef := tp.Away
-		if !ok {
-			log.Fatalf("Failed to get game with matchup %s @ %s", tp.Away.ID, tp.Home.ID)
-		}
-		if swap {
-			log.Printf("Game %s (%s @ %s) has home/away swapped between predictions and ground truth", gref.ID, tp.Home.ID, tp.Away.ID)
-			homeRef, awayRef = awayRef, homeRef
-		}
-		// TODO: match model to prediction
-		col := gref.Collection("predictions")
-		for model := range pt.predictions {
-			if pt.missing[model][i] {
-				continue
-			}
-			p := pt.predictions[model][i]
-			mp := firestore.ModelPrediction{
-				Model:       nil, // TODO: lookup
-				HomeTeam:    homeRef,
-				AwayTeam:    awayRef,
-				NeutralSite: true, // TODO: lookup
-				Spread:      p,
-			}
-			ref := col.Doc(model)
-			predictions = append(predictions, refPred{ref: ref, pred: mp})
-		}
+	predictions, err := pt.GetWritablePredictions(gameLookup, tps)
+	if err != nil {
+		log.Fatalf("Failed making writable predictions: %v", err)
 	}
 
 	if DryRun {
@@ -286,8 +255,9 @@ func headerMap(record []string) (map[string]int, error) {
 
 // TeamPair is a collection of a home and away team document ref.
 type teamPair struct {
-	Home *fs.DocumentRef
-	Away *fs.DocumentRef
+	Home    *fs.DocumentRef
+	Away    *fs.DocumentRef
+	neutral bool
 }
 
 func (pt *predictionTable) teamPairs(lookup *teamRefsByName) ([]teamPair, error) {
@@ -304,7 +274,7 @@ func (pt *predictionTable) teamPairs(lookup *teamRefsByName) ([]teamPair, error)
 		if !ok {
 			return nil, fmt.Errorf("no team matching away team '%s' in game %d: best matches are %v", at, i, possible)
 		}
-		tps[i] = teamPair{Home: href, Away: aref}
+		tps[i] = teamPair{Home: href, Away: aref, neutral: pt.neutral[i]}
 	}
 	return tps, nil
 }
@@ -346,28 +316,33 @@ func (t *teamRefsByName) Lookup(name string) (*fs.DocumentRef, []string, bool) {
 type gameRefsByTeams struct {
 	homeTeams map[string]*fs.DocumentRef
 	awayTeams map[string]*fs.DocumentRef
+	neutral   map[*fs.DocumentRef]bool
 }
 
 func newGameRefsByTeams(games []firestore.Game, refs []*fs.DocumentRef) *gameRefsByTeams {
 	homeTeams := make(map[string]*fs.DocumentRef)
 	awayTeams := make(map[string]*fs.DocumentRef)
+	neutral := make(map[*fs.DocumentRef]bool)
 	for i, g := range games {
 		homeTeams[g.HomeTeam.ID] = refs[i]
 		awayTeams[g.AwayTeam.ID] = refs[i]
+		neutral[refs[i]] = g.NeutralSite
 	}
 	return &gameRefsByTeams{
 		homeTeams: homeTeams,
 		awayTeams: awayTeams,
+		neutral:   neutral,
 	}
 }
 
-func (g *gameRefsByTeams) Lookup(tp teamPair) (game *fs.DocumentRef, swap bool, ok bool) {
+func (g *gameRefsByTeams) Lookup(tp teamPair) (game *fs.DocumentRef, swap bool, wrongNeutral bool, ok bool) {
 	hgRef, hOK := g.homeTeams[tp.Home.ID]
 	agRef, aOK := g.awayTeams[tp.Away.ID]
 	swap = false
 	if hOK && aOK && hgRef == agRef {
 		game = hgRef
 		ok = true
+		wrongNeutral = g.neutral[hgRef] != tp.neutral
 		return
 	}
 	if hOK && aOK && hgRef != agRef {
@@ -383,8 +358,51 @@ func (g *gameRefsByTeams) Lookup(tp teamPair) (game *fs.DocumentRef, swap bool, 
 	if hOK && aOK && hgRef == agRef {
 		game = hgRef
 		ok = true
+		wrongNeutral = g.neutral[hgRef] != tp.neutral
 		return
 	}
 
-	return nil, false, false
+	return nil, false, false, false
+}
+
+type refPred struct {
+	ref  *fs.DocumentRef
+	pred firestore.ModelPrediction
+}
+
+func (pt *predictionTable) GetWritablePredictions(g *gameRefsByTeams, tps []teamPair) ([]refPred, error) {
+	predictions := make([]refPred, 0)
+	for i, tp := range tps {
+		gref, swap, wrongNeutral, ok := g.Lookup(tp)
+		homeRef := tp.Home
+		awayRef := tp.Away
+		if !ok {
+			return nil, fmt.Errorf("failed to get game with matchup %s @ %s", tp.Away.ID, tp.Home.ID)
+		}
+		if swap {
+			log.Printf("Game %s (%s @ %s) has home/away swapped between predictions and ground truth", gref.ID, tp.Home.ID, tp.Away.ID)
+			homeRef, awayRef = awayRef, homeRef
+		}
+		if wrongNeutral {
+			log.Printf("Game %s (%s v %s) has wrong neutral site flag (should be %t)", gref.ID, tp.Away.ID, tp.Home.ID, !tp.neutral)
+		}
+		// TODO: match model to prediction
+		col := gref.Collection("predictions")
+		for model := range pt.predictions {
+			if pt.missing[model][i] {
+				continue
+			}
+			p := pt.predictions[model][i]
+			mp := firestore.ModelPrediction{
+				Model:       nil, // TODO: lookup
+				HomeTeam:    homeRef,
+				AwayTeam:    awayRef,
+				NeutralSite: tp.neutral != wrongNeutral, // TODO: lookup
+				Spread:      p,
+			}
+			ref := col.Doc(model)
+			predictions = append(predictions, refPred{ref: ref, pred: mp})
+		}
+	}
+	return predictions, nil
 }

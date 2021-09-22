@@ -52,6 +52,8 @@ func main() {
 		updateGames()
 	case "update-predictions":
 		updatePredictions()
+	case "update-models":
+		updateModels()
 	default:
 		flag.Usage()
 		log.Fatalf("Command '%s' not understood", flag.Arg(0))
