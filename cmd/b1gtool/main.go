@@ -24,8 +24,10 @@ B1GTool: a command-line tool for managing B1G Pick 'Em data and picks.
 Commands:
   help
   setup-season
+  setup-model
   update-games
   update-predictions
+  update-models
 
 Global Flags:
 `)
@@ -48,6 +50,8 @@ func main() {
 		help()
 	case "setup-season":
 		setupSeason()
+	case "setup-model":
+		setupModel()
 	case "update-games":
 		updateGames()
 	case "update-predictions":

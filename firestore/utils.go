@@ -59,6 +59,13 @@ func treeInt(name string, indent int, last bool, value int) string {
 	return sb.String()
 }
 
+func treeFloat64(name string, indent int, last bool, value float64) string {
+	var sb strings.Builder
+	sb.WriteString(treeElement(name, indent, last))
+	sb.WriteString(fmt.Sprintf(": %f", value))
+	return sb.String()
+}
+
 func treeIntPtr(name string, indent int, last bool, value *int) string {
 	var sb strings.Builder
 	sb.WriteString(treeElement(name, indent, last))

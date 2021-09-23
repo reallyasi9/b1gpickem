@@ -3,6 +3,7 @@ package firestore
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	fs "cloud.google.com/go/firestore"
 )
@@ -100,6 +101,40 @@ type ModelPerformance struct {
 
 	// Model is a pointer to the Firestore model object it references for easy access.
 	Model *fs.DocumentRef `firestore:"model"` // discovered
+}
+
+// String implements the Stringer interface.
+func (mp ModelPerformance) String() string {
+	var sb strings.Builder
+	sb.WriteString("ModelPerformance\n")
+	sb.WriteString(treeInt("Rank", 0, false, mp.Rank))
+	sb.WriteRune('\n')
+	sb.WriteString(treeFloat64("PercentCorrect", 0, false, mp.PercentCorrect))
+	sb.WriteRune('\n')
+	sb.WriteString(treeFloat64("PercentATS", 0, false, mp.PercentATS))
+	sb.WriteRune('\n')
+	sb.WriteString(treeFloat64("MAE", 0, false, mp.MAE))
+	sb.WriteRune('\n')
+	sb.WriteString(treeFloat64("MSE", 0, false, mp.MSE))
+	sb.WriteRune('\n')
+	sb.WriteString(treeFloat64("Bias", 0, false, mp.Bias))
+	sb.WriteRune('\n')
+	sb.WriteString(treeInt("GamesPredicted", 0, false, mp.GamesPredicted))
+	sb.WriteRune('\n')
+	sb.WriteString(treeInt("Wins", 0, false, mp.Wins))
+	sb.WriteRune('\n')
+	sb.WriteString(treeInt("Losses", 0, false, mp.Losses))
+	sb.WriteRune('\n')
+	sb.WriteString(treeInt("WinsATS", 0, false, mp.WinsATS))
+	sb.WriteRune('\n')
+	sb.WriteString(treeInt("LossesATS", 0, false, mp.LossesATS))
+	sb.WriteRune('\n')
+	sb.WriteString(treeInt("Wins", 0, false, mp.Wins))
+	sb.WriteRune('\n')
+	sb.WriteString(treeFloat64("StdDev", 0, false, mp.StdDev))
+	sb.WriteRune('\n')
+	sb.WriteString(treeRef("Model", 0, false, mp.Model))
+	return sb.String()
 }
 
 // ModelPrediction is a prediction made by a certain Model for a certain Game.

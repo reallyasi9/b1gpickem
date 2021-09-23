@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
 	"strconv"
+	"time"
 
 	fs "cloud.google.com/go/firestore"
 	"github.com/reallyasi9/b1gpickem/firestore"
@@ -66,8 +68,8 @@ func updateModels() {
 		umFlagSet.Usage()
 		log.Fatal("Season and week arguments not supplied")
 	}
-	_ = umFlagSet.Arg(0) // technically, strings are okay
-	_ = umFlagSet.Arg(1)
+	year := umFlagSet.Arg(0) // technically, strings are okay
+	week := umFlagSet.Arg(1)
 
 	ctx := context.Background()
 	fsClient, err := fs.NewClient(ctx, ProjectID)
@@ -79,12 +81,34 @@ func updateModels() {
 	if err != nil {
 		log.Fatalf("Error getting models: %v", err)
 	}
+	// FIXME
+	for i, ref := range refs {
+		ss, err := ref.Get(ctx)
+		if err != nil {
+			log.Fatalf("WAHWAHWAH: %v", err)
+		}
+		n, err := ss.DataAt("name")
+		if err != nil {
+			log.Printf("BAHBAHBAH: %v", err)
+			continue
+		}
+		name := n.(string)
+		models[i].System = name
+
+		_, err = ref.Update(ctx, []fs.Update{{Path: "system", Value: name}})
+		if err != nil {
+			log.Fatalf("QAHQAHQAH: %v", err)
+		}
+	}
+	//
 
 	lookup := make(modelRefsByName)
+	rlookup := make(modelNamesByRef)
 	for i := range models {
 		model := models[i]
 		ref := refs[i]
 		lookup[model.System] = ref
+		rlookup[ref] = model.ShortName
 	}
 
 	pt, err := newPerformanceTable(perfURL, lookup)
@@ -93,7 +117,62 @@ func updateModels() {
 	}
 
 	// TODO: the performances have to be written somewhere...  like season/week/n, in a document that has a timestamp, maybe?
-	fmt.Print(pt)
+	weekRef := fsClient.Collection("seasons").Doc(year).Collection("weeks").Doc(week)
+	weekSS, err := weekRef.Get(ctx)
+	if err != nil {
+		log.Fatalf("Error getting week snapshot: %v", err)
+	}
+	if !weekSS.Exists() {
+		log.Fatalf("Week '%s' of season '%s' does not exist: run setup-season", week, year)
+	}
+
+	now := time.Now()
+	perfRef := weekRef.Collection("model-performances").Doc(now.Format(time.RFC3339))
+
+	if DryRun {
+		log.Printf("DRY RUN: would write the following to %s:", perfRef.Path)
+		for _, p := range *pt {
+			log.Println(p)
+		}
+		return
+	}
+
+	err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
+		perfCollDoc := struct {
+			Timestamp time.Time `firestore:"timestamp"`
+		}{
+			Timestamp: now,
+		}
+		var err error
+		if Force {
+			err = t.Set(perfRef, &perfCollDoc)
+		} else {
+			err = t.Create(perfRef, &perfCollDoc)
+		}
+		if err != nil {
+			return err
+		}
+		for _, p := range *pt {
+			name, ok := rlookup[p.Model]
+			if !ok {
+				return fmt.Errorf("model short name for '%s' not in lookup table", p.Model.ID)
+			}
+			ref := perfRef.Collection("performances").Doc(name)
+			if Force {
+				err = t.Set(ref, &p)
+			} else {
+				err = t.Create(ref, &p)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Fatalf("Unable to write model performances to firestore: %v", err)
+	}
 }
 
 type performanceTable []firestore.ModelPerformance
@@ -203,6 +282,7 @@ func newPerformanceTable(f string, lookup modelRefsByName) (*performanceTable, e
 				return nil, fmt.Errorf("error parsing column '%s' in row '%d': %w", col, j, err)
 			}
 		}
+		perf.StdDev = math.Sqrt(perf.MSE - math.Pow(perf.Bias, 2.))
 		pt = append(pt, perf)
 	}
 
@@ -210,3 +290,4 @@ func newPerformanceTable(f string, lookup modelRefsByName) (*performanceTable, e
 }
 
 type modelRefsByName map[string]*fs.DocumentRef
+type modelNamesByRef map[*fs.DocumentRef]string
