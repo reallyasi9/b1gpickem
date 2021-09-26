@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
+	"strings"
 )
 
 // ProjectID is the Google Cloud Project ID where the season data will be loaded.
@@ -17,23 +19,28 @@ var Force bool
 var DryRun bool
 
 func usage() {
-	fmt.Fprint(flag.CommandLine.Output(), `Usage: b1gtool [global-flags] <command>
+	cs := make([]string, len(Commands))
+	i := 0
+	for command := range Commands {
+		cs[i] = command
+	}
+	sort.Strings(cs)
+	cstring := strings.Join(cs, "\n  ")
+	fmt.Fprintf(flag.CommandLine.Output(), `Usage: b1gtool [global-flags] <command>
 
 B1GTool: a command-line tool for managing B1G Pick 'Em data and picks.
 
 Commands:
-  help
-  setup-season
-  setup-model
-  update-games
-  update-predictions
-  update-models
+  %s
 
 Global Flags:
-`)
+`, cstring)
 
 	flag.PrintDefaults()
 }
+
+// Commands are nullary functions that are run when commands (the keys of the map) are given as the first argument to the program.
+var Commands map[string]func() = make(map[string]func())
 
 func init() {
 	flag.Usage = usage
@@ -45,23 +52,13 @@ func init() {
 
 func main() {
 	parseCommandLine()
-	switch flag.Arg(0) {
-	case "help":
-		help()
-	case "setup-season":
-		setupSeason()
-	case "setup-model":
-		setupModel()
-	case "update-games":
-		updateGames()
-	case "update-predictions":
-		updatePredictions()
-	case "update-models":
-		updateModels()
-	default:
+	cmd := flag.Arg(0)
+	c, ok := Commands[cmd]
+	if !ok {
 		flag.Usage()
-		log.Fatalf("Command '%s' not understood", flag.Arg(0))
+		log.Fatalf("Unrecognized command \"%s\"", cmd)
 	}
+	c()
 	log.Print("Done.")
 }
 

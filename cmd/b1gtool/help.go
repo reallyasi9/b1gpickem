@@ -3,7 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 )
+
+// Usage is a map of usage functions to commands.
+var Usage map[string]func() = make(map[string]func())
 
 var helpFlagSet *flag.FlagSet
 
@@ -15,11 +19,16 @@ Get help about a particular command.
 Arguments:
   command string
         Print help for a specific command
-`)
+
+Global Flags:`)
+	flag.PrintDefaults()
 
 }
 
 func init() {
+	Commands["help"] = help
+	Usage["help"] = helpUsage
+
 	helpFlagSet = flag.NewFlagSet("help", flag.ContinueOnError)
 	helpFlagSet.Usage = helpUsage
 }
@@ -30,22 +39,10 @@ func help() {
 	if helpFlagSet.NArg() > 0 {
 		cmd = helpFlagSet.Arg(0)
 	}
-	switch cmd {
-	case "help":
-		helpFlagSet.Usage()
-	case "setup-season":
-		seasonFlagSet.Usage()
-	case "setup-model":
-		modelFlagSet.Usage()
-	case "update-games":
-		ugFlagSet.Usage()
-	case "update-predictions":
-		upFlagSet.Usage()
-	case "update-models":
-		umFlagSet.Usage()
-	case "":
-		fallthrough
-	default:
+	u, ok := Usage[cmd]
+	if !ok {
 		flag.CommandLine.Usage()
+		log.Fatalf("Unrecognized command \"%s\"", cmd)
 	}
+	u()
 }

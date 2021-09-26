@@ -279,6 +279,7 @@ func (pt *predictionTable) teamPairs(lookup *teamRefsByName) ([]teamPair, error)
 	return tps, nil
 }
 
+// TODO: put this in a separate library?
 // teamRefsByName is a type for quick lookups of teams by name.
 type teamRefsByName struct {
 	names  []string
