@@ -23,6 +23,7 @@ func usage() {
 	i := 0
 	for command := range Commands {
 		cs[i] = command
+		i++
 	}
 	sort.Strings(cs)
 	cstring := strings.Join(cs, "\n  ")

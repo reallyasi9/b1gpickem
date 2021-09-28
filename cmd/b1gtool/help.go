@@ -20,7 +20,8 @@ Arguments:
   command string
         Print help for a specific command
 
-Global Flags:`)
+Global Flags:
+`)
 	flag.PrintDefaults()
 
 }
