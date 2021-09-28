@@ -24,12 +24,13 @@ Arguments:
         Short name of model used in ThePredictionTracker.com CSV file (begins with "line").
   systemname string
         Name of model used in ThePredictionTracker.com results tracker table.
+
 Flags:
 `)
 
 	modelFlagSet.PrintDefaults()
 
-	fmt.Fprint(flag.CommandLine.Output(), "Global Flags:\n")
+	fmt.Fprint(flag.CommandLine.Output(), "\nGlobal Flags:\n")
 
 	flag.PrintDefaults()
 
@@ -39,6 +40,9 @@ func init() {
 	modelFlagSet = flag.NewFlagSet("setup-model", flag.ExitOnError)
 	modelFlagSet.SetOutput(flag.CommandLine.Output())
 	modelFlagSet.Usage = modelUsage
+
+	Commands["setup-model"] = setupModel
+	Usage["setup-model"] = modelUsage
 }
 
 func setupModel() {

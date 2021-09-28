@@ -35,7 +35,7 @@ Flags:
 
 	ugFlagSet.PrintDefaults()
 
-	fmt.Fprint(flag.CommandLine.Output(), "Global Flags:\n")
+	fmt.Fprint(flag.CommandLine.Output(), "\nGlobal Flags:\n")
 
 	flag.PrintDefaults()
 
@@ -45,6 +45,9 @@ func init() {
 	ugFlagSet = flag.NewFlagSet("update-games", flag.ExitOnError)
 	ugFlagSet.SetOutput(flag.CommandLine.Output())
 	ugFlagSet.Usage = ugUsage
+
+	Commands["update-games"] = updateGames
+	Usage["update-games"] = ugUsage
 }
 
 func updateGames() {

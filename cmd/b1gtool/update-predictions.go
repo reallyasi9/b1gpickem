@@ -44,7 +44,7 @@ Flags:
 
 	ugFlagSet.PrintDefaults()
 
-	fmt.Fprint(flag.CommandLine.Output(), "Global Flags:\n")
+	fmt.Fprint(flag.CommandLine.Output(), "\nGlobal Flags:\n")
 
 	flag.PrintDefaults()
 
@@ -56,6 +56,9 @@ func init() {
 	upFlagSet.Usage = upUsage
 
 	upFlagSet.StringVar(&predCSV, "csv", "https://www.thepredictiontracker.com/ncaapredictions.csv", "URL or file name of CSV file containing model predictions.")
+
+	Commands["update-predictions"] = updatePredictions
+	Usage["update-predictions"] = upUsage
 }
 
 func updatePredictions() {
@@ -95,18 +98,18 @@ func updatePredictions() {
 	}
 
 	weekRef := seasonRef.Collection("weeks").Doc(week)
-	games, refs, err := firestore.GetGames(ctx, fsClient, weekRef)
+	games, grefs, err := firestore.GetGames(ctx, fsClient, weekRef)
 	if err != nil {
 		log.Fatalf("Failed to get games: %v", err)
 	}
 
-	models, refs, err := firestore.GetModels(ctx, fsClient)
+	models, mrefs, err := firestore.GetModels(ctx, fsClient)
 	if err != nil {
 		log.Fatalf("Failed to get models: %v", err)
 	}
 
-	modelLookup := newModelRefsByName(models, refs)
-	gameLookup := newGameRefsByTeams(games, refs)
+	modelLookup := newModelRefsByName(models, mrefs)
+	gameLookup := newGameRefsByTeams(games, grefs)
 	predictions, err := pt.GetWritablePredictions(gameLookup, modelLookup, tps)
 	if err != nil {
 		log.Fatalf("Failed making writable predictions: %v", err)

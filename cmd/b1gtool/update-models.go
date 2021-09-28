@@ -56,6 +56,9 @@ func init() {
 	umFlagSet.Usage = umUsage
 
 	umFlagSet.StringVar(&perfURL, "perf", "https://www.thepredictiontracker.com/ncaaresults.php", "URL or file name of web site containing model performance to date.")
+
+	Commands["update-models"] = updateModels
+	Usage["update-models"] = umUsage
 }
 
 func updateModels() {
@@ -81,26 +84,6 @@ func updateModels() {
 	if err != nil {
 		log.Fatalf("Error getting models: %v", err)
 	}
-	// FIXME
-	// for i, ref := range refs {
-	// 	ss, err := ref.Get(ctx)
-	// 	if err != nil {
-	// 		log.Fatalf("WAHWAHWAH: %v", err)
-	// 	}
-	// 	n, err := ss.DataAt("name")
-	// 	if err != nil {
-	// 		log.Printf("BAHBAHBAH: %v", err)
-	// 		continue
-	// 	}
-	// 	name := n.(string)
-	// 	models[i].System = name
-
-	// 	_, err = ref.Update(ctx, []fs.Update{{Path: "system", Value: name}})
-	// 	if err != nil {
-	// 		log.Fatalf("QAHQAHQAH: %v", err)
-	// 	}
-	// }
-	//
 
 	lookup := make(modelRefsByName)
 	rlookup := make(modelNamesByRef)
@@ -116,7 +99,6 @@ func updateModels() {
 		log.Fatalf("Error parsing performance table: %v", err)
 	}
 
-	// TODO: the performances have to be written somewhere...  like season/week/n, in a document that has a timestamp, maybe?
 	weekRef := fsClient.Collection("seasons").Doc(year).Collection("weeks").Doc(week)
 	weekSS, err := weekRef.Get(ctx)
 	if err != nil {
