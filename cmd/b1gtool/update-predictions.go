@@ -100,8 +100,14 @@ func updatePredictions() {
 		log.Fatalf("Failed to get games: %v", err)
 	}
 
+	models, refs, err := firestore.GetModels(ctx, fsClient)
+	if err != nil {
+		log.Fatalf("Failed to get models: %v", err)
+	}
+
+	modelLookup := newModelRefsByName(models, refs)
 	gameLookup := newGameRefsByTeams(games, refs)
-	predictions, err := pt.GetWritablePredictions(gameLookup, tps)
+	predictions, err := pt.GetWritablePredictions(gameLookup, modelLookup, tps)
 	if err != nil {
 		log.Fatalf("Failed making writable predictions: %v", err)
 	}
@@ -371,7 +377,7 @@ type refPred struct {
 	pred firestore.ModelPrediction
 }
 
-func (pt *predictionTable) GetWritablePredictions(g *gameRefsByTeams, tps []teamPair) ([]refPred, error) {
+func (pt *predictionTable) GetWritablePredictions(g *gameRefsByTeams, modelLookup *modelRefsByName, tps []teamPair) ([]refPred, error) {
 	predictions := make([]refPred, 0)
 	for i, tp := range tps {
 		gref, swap, wrongNeutral, ok := g.Lookup(tp)
@@ -393,12 +399,16 @@ func (pt *predictionTable) GetWritablePredictions(g *gameRefsByTeams, tps []team
 			if pt.missing[model][i] {
 				continue
 			}
+			mref, ok := (*modelLookup)[model]
+			if !ok {
+				return nil, fmt.Errorf("failed to get model with name \"%s\"", model)
+			}
 			p := pt.predictions[model][i]
 			mp := firestore.ModelPrediction{
-				Model:       nil, // TODO: lookup
+				Model:       mref,
 				HomeTeam:    homeRef,
 				AwayTeam:    awayRef,
-				NeutralSite: tp.neutral != wrongNeutral, // TODO: lookup
+				NeutralSite: tp.neutral != wrongNeutral,
 				Spread:      p,
 			}
 			ref := col.Doc(model)
@@ -406,4 +416,25 @@ func (pt *predictionTable) GetWritablePredictions(g *gameRefsByTeams, tps []team
 		}
 	}
 	return predictions, nil
+}
+
+// TODO: Separate library
+type modelRefsByName map[string]*fs.DocumentRef
+
+func newModelRefsByName(models []firestore.Model, refs []*fs.DocumentRef) *modelRefsByName {
+	out := make(modelRefsByName)
+	for i, model := range models {
+		out[model.ShortName] = refs[i]
+	}
+	return &out
+}
+
+type modelRefsBySystem map[string]*fs.DocumentRef
+
+func newModelRefsBySystem(models []firestore.Model, refs []*fs.DocumentRef) *modelRefsBySystem {
+	out := make(modelRefsBySystem)
+	for i, model := range models {
+		out[model.System] = refs[i]
+	}
+	return &out
 }

@@ -82,24 +82,24 @@ func updateModels() {
 		log.Fatalf("Error getting models: %v", err)
 	}
 	// FIXME
-	for i, ref := range refs {
-		ss, err := ref.Get(ctx)
-		if err != nil {
-			log.Fatalf("WAHWAHWAH: %v", err)
-		}
-		n, err := ss.DataAt("name")
-		if err != nil {
-			log.Printf("BAHBAHBAH: %v", err)
-			continue
-		}
-		name := n.(string)
-		models[i].System = name
+	// for i, ref := range refs {
+	// 	ss, err := ref.Get(ctx)
+	// 	if err != nil {
+	// 		log.Fatalf("WAHWAHWAH: %v", err)
+	// 	}
+	// 	n, err := ss.DataAt("name")
+	// 	if err != nil {
+	// 		log.Printf("BAHBAHBAH: %v", err)
+	// 		continue
+	// 	}
+	// 	name := n.(string)
+	// 	models[i].System = name
 
-		_, err = ref.Update(ctx, []fs.Update{{Path: "system", Value: name}})
-		if err != nil {
-			log.Fatalf("QAHQAHQAH: %v", err)
-		}
-	}
+	// 	_, err = ref.Update(ctx, []fs.Update{{Path: "system", Value: name}})
+	// 	if err != nil {
+	// 		log.Fatalf("QAHQAHQAH: %v", err)
+	// 	}
+	// }
 	//
 
 	lookup := make(modelRefsByName)
@@ -289,5 +289,4 @@ func newPerformanceTable(f string, lookup modelRefsByName) (*performanceTable, e
 	return &pt, nil
 }
 
-type modelRefsByName map[string]*fs.DocumentRef
 type modelNamesByRef map[*fs.DocumentRef]string

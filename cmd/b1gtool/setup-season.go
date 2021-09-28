@@ -28,12 +28,13 @@ Arguments:
         API key to access CollegeFootballData.com data.
   season int
         Year to set up (e.g., %d).
+
 Flags:
 `, time.Now().Year())
 
 	seasonFlagSet.PrintDefaults()
 
-	fmt.Fprint(flag.CommandLine.Output(), "Global Flags:\n")
+	fmt.Fprint(flag.CommandLine.Output(), "\nGlobal Flags:\n")
 
 	flag.PrintDefaults()
 
@@ -43,6 +44,9 @@ func init() {
 	seasonFlagSet = flag.NewFlagSet("setup-season", flag.ExitOnError)
 	seasonFlagSet.SetOutput(flag.CommandLine.Output())
 	seasonFlagSet.Usage = seasonUsage
+
+	Commands["setup-season"] = setupSeason
+	Usage["setup-season"] = seasonUsage
 }
 
 func setupSeason() {

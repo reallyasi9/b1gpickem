@@ -173,3 +173,17 @@ type ModelTeamPoints struct {
 	// HomeAdvantage are the number of points added to the predicted points if this team is the home team.
 	HomeAdvantage float64 `firestore:"home_advantage"`
 }
+
+// String implements the Stringer interface.
+func (mp ModelTeamPoints) String() string {
+	var sb strings.Builder
+	sb.WriteString("ModelTeamPoints\n")
+	sb.WriteString(treeRef("Model", 0, false, mp.Model))
+	sb.WriteRune('\n')
+	sb.WriteString(treeRef("Team", 0, false, mp.Team))
+	sb.WriteRune('\n')
+	sb.WriteString(treeFloat64("Points", 0, false, mp.Points))
+	sb.WriteRune('\n')
+	sb.WriteString(treeFloat64("HomeAdvantage", 0, true, mp.HomeAdvantage))
+	return sb.String()
+}
