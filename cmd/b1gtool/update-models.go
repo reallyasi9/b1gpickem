@@ -256,7 +256,7 @@ func newPerformanceTable(f string, lookup modelRefsByName) (*performanceTable, e
 				if !ok {
 					return nil, fmt.Errorf("unable to find model '%s'", s)
 				}
-				perf.Model = model // TODO: LOOK ME UP!
+				perf.Model = model
 			default:
 				return nil, fmt.Errorf("column '%s' in row %d not understood", col, j)
 			}

@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	fs "cloud.google.com/go/firestore"
-	edlib "github.com/hbollon/go-edlib"
 	"github.com/reallyasi9/b1gpickem/firestore"
 )
 
@@ -91,7 +90,7 @@ func updatePredictions() {
 		log.Fatalf("Failed to get teams: %v", err)
 	}
 
-	teamLookup := newTeamRefsByName(teams, refs)
+	teamLookup := firestore.NewTeamRefsByName(teams, refs)
 	tps, err := pt.teamPairs(teamLookup)
 	if err != nil {
 		log.Fatalf("Failed to match teams to refs: %v", err)
@@ -269,57 +268,23 @@ type teamPair struct {
 	neutral bool
 }
 
-func (pt *predictionTable) teamPairs(lookup *teamRefsByName) ([]teamPair, error) {
+func (pt *predictionTable) teamPairs(lookup firestore.TeamRefsByName) ([]teamPair, error) {
 	tps := make([]teamPair, len(pt.homeTeams))
 	for i := range pt.homeTeams {
 		ht := pt.homeTeams[i]
 		at := pt.awayTeams[i]
 
-		href, possible, ok := lookup.Lookup(ht)
+		href, ok := lookup[ht]
 		if !ok {
-			return nil, fmt.Errorf("no team matching home team '%s' in game %d: best matches are %v", ht, i, possible)
+			return nil, fmt.Errorf("no team matching home team '%s' in game %d", ht, i)
 		}
-		aref, possible, ok := lookup.Lookup(at)
+		aref, ok := lookup[at]
 		if !ok {
-			return nil, fmt.Errorf("no team matching away team '%s' in game %d: best matches are %v", at, i, possible)
+			return nil, fmt.Errorf("no team matching away team '%s' in game %d", at, i)
 		}
 		tps[i] = teamPair{Home: href, Away: aref, neutral: pt.neutral[i]}
 	}
 	return tps, nil
-}
-
-// TODO: put this in a separate library?
-// teamRefsByName is a type for quick lookups of teams by name.
-type teamRefsByName struct {
-	names  []string
-	byName map[string]*fs.DocumentRef
-}
-
-func newTeamRefsByName(teams []firestore.Team, refs []*fs.DocumentRef) *teamRefsByName {
-	names := make([]string, 0, len(teams))
-	byName := make(map[string]*fs.DocumentRef)
-	for i, t := range teams {
-		for _, n := range t.OtherNames {
-			names = append(names, n)
-			byName[n] = refs[i]
-		}
-	}
-	return &teamRefsByName{
-		names:  names,
-		byName: byName,
-	}
-}
-
-func (t *teamRefsByName) Lookup(name string) (*fs.DocumentRef, []string, bool) {
-	if r, ok := t.byName[name]; ok {
-		return r, nil, true
-	}
-	// find closest 3 team names by edit distance
-	closest, err := edlib.FuzzySearchSet(name, t.names, 3, edlib.Jaccard)
-	if err != nil {
-		return nil, nil, false
-	}
-	return nil, closest, false
 }
 
 // gameRefsByTeams is a struct for quick lookups of games by home/away teams.

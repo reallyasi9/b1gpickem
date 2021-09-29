@@ -114,7 +114,7 @@ func updateSagarin() {
 	if err != nil {
 		log.Fatalf("Failed to get teams: %v", err)
 	}
-	teamLookup := newTeamRefsByName(teams, refs)
+	teamLookup := firestore.NewTeamRefsByName(teams, refs)
 
 	models, refs, err := firestore.GetModels(ctx, fsClient)
 	if err != nil {
@@ -194,7 +194,7 @@ func updateSagarin() {
 type sagarinElement []firestore.ModelTeamPoints
 
 // parseSagarinTable parses the table provided by Sagarin for each team.
-func parseSagarinTable(f string, lookup *teamRefsByName, modelRefs []*fs.DocumentRef) (map[string]sagarinElement, error) {
+func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*fs.DocumentRef) (map[string]sagarinElement, error) {
 	var rc io.ReadCloser
 	if _, err := url.Parse(f); err == nil {
 		// <sigh> Oh Sagarin...
@@ -262,7 +262,7 @@ func parseSagarinTable(f string, lookup *teamRefsByName, modelRefs []*fs.Documen
 		}
 		seenTeams[name] = struct{}{}
 
-		teamRef, _, exists := lookup.Lookup(name)
+		teamRef, exists := lookup[name]
 		if !exists {
 			teamNotFoundErr = fmt.Errorf("parseSagarinTable: last team not found: \"%s\"", name)
 			log.Printf("Team \"%s\" not found in teams", name)

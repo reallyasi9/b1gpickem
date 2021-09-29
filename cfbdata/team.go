@@ -46,19 +46,20 @@ func coalesceString(s *string, replacement string) string {
 }
 
 var commonAbbreviations = map[*regexp.Regexp][]string{
-	regexp.MustCompile(`\bSt(\.|ate)?\b`):          {"State", "St", "St."},                                  // Appalachian State
-	regexp.MustCompile(`\bMiss(\.|issippi)\b`):     {"Mississippi", "Miss", "Miss."},                        // Southern Mississippi
-	regexp.MustCompile(`(?i)\s*\(Oh(\.|io)?\)`):    {" (Ohio)", " (OH)", " (OH.)", " (NTM)", "-Ohio"},       // Miami (NTM)
-	regexp.MustCompile(`(?i)\s*\(Fl(\.|orida)?\)`): {" (Florida)", " (FL)", " (FL.)", " (YTM)", "-Florida"}, // Miami (YTM)
-	regexp.MustCompile(`\bMichigan\b`):             {"Mich."},                                               // Central Michigan
-	regexp.MustCompile(`\bInternational\b`):        {"Intl."},                                               // Florida International
-	regexp.MustCompile(`\bTennessee\b`):            {"Tenn."},                                               // Middle Tennessee State
-	regexp.MustCompile(`\bUMass\b`):                {"Massachusetts"},                                       // All the Massachusettses
-	regexp.MustCompile(`^UL (.)(.*)$`):             {"Louisiana-${1}${2}", "Louisiana${1}${2}(UL${1})"},     // Louisianas Lafayette and Monroe
-	regexp.MustCompile(`^Troy$`):                   {"Troy St."},                                            // Troy. Kill me.
-	regexp.MustCompile(`^Kent State$`):             {"Kent"},                                                // Kent. Kill me.
-	regexp.MustCompile(`Hawai'i`):                  {"Hawaii"},                                              // Would it kill you to add the appostrophe?
-	regexp.MustCompile(`\bVirginia\b`):             {"Va."},                                                 // West Virginia
+	regexp.MustCompile(`\bSt(\.|ate)?\b`):          {"State", "St", "St."},                                             // Appalachian State
+	regexp.MustCompile(`\bMiss(\.|issippi)\b`):     {"Mississippi", "Miss", "Miss."},                                   // Southern Mississippi
+	regexp.MustCompile(`(?i)\s*\(Oh(\.|io)?\)`):    {" (Ohio)", " (OH)", " (OH.)", " (NTM)", "-Ohio"},                  // Miami (NTM)
+	regexp.MustCompile(`(?i)\s*\(Fl(\.|orida)?\)`): {" (Florida)", " (FL)", " (FL.)", " (Fla.)", " (YTM)", "-Florida"}, // Miami (YTM)
+	regexp.MustCompile(`\bMichigan\b`):             {"Mich."},                                                          // Central Michigan
+	regexp.MustCompile(`\bInternational\b`):        {"Intl."},                                                          // Florida International
+	regexp.MustCompile(`\bTennessee\b`):            {"Tenn."},                                                          // Middle Tennessee State
+	regexp.MustCompile(`\bUMass\b`):                {"Massachusetts"},                                                  // All the Massachusettses
+	regexp.MustCompile(`^UL (.)(.*)$`):             {"Louisiana-${1}${2}", "Louisiana${1}${2}(UL${1})"},                // Louisianas Lafayette and Monroe
+	regexp.MustCompile(`^Troy$`):                   {"Troy St."},                                                       // Troy. Kill me.
+	regexp.MustCompile(`^Kent State$`):             {"Kent"},                                                           // Kent. Kill me.
+	regexp.MustCompile(`Hawai'i`):                  {"Hawaii"},                                                         // Would it kill you to add the appostrophe?
+	regexp.MustCompile(`\bVirginia\b`):             {"Va."},                                                            // West Virginia
+	regexp.MustCompile(`\bIllinois\b`):             {"Ill."},                                                           // More like "Illannoying," am I right?
 
 	// special Sagarin abbreviations
 	regexp.MustCompile(`^Ole Miss$`):         {"Mississippi"},                   // That's your name. Use it.
@@ -126,10 +127,11 @@ func abbreviate(s string) string {
 	for _, split := range splits {
 		sb.WriteString(strings.ToUpper(split[:1]))
 	}
-	return sb.String()
+	ab := sb.String()
+	return ab[:4]
 }
 
-// ToFirestore does not link the Venue--that has to be done with an external lookup.
+// toFirestore does not link the Venue--that has to be done with an external lookup.
 func (t Team) toFirestore() firestore.Team {
 	otherNames := make([]string, 0)
 	otherNames = appendNonNilStrings(otherNames, t.AltName1, t.AltName2, t.AltName3, &t.School)

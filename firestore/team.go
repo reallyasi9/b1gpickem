@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"cloud.google.com/go/firestore"
+	"google.golang.org/api/iterator"
 )
 
 // Team represents an NCAA football team.
@@ -77,22 +78,44 @@ func (t Team) String() string {
 
 // GetTeams returns a collection of teams for a given season.
 func GetTeams(ctx context.Context, client *firestore.Client, season *firestore.DocumentRef) ([]Team, []*firestore.DocumentRef, error) {
-	refs, err := season.Collection("teams").DocumentRefs(ctx).GetAll()
-	if err != nil {
-		return nil, nil, fmt.Errorf("error getting team document refs for seasons %s: %w", season.ID, err)
-	}
-	teams := make([]Team, len(refs))
-	for i, r := range refs {
-		ss, err := r.Get(ctx)
+	iter := season.Collection("teams").Documents(ctx)
+	teams := make([]Team, 0)
+	refs := make([]*firestore.DocumentRef, 0)
+	for {
+		ss, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
 		if err != nil {
-			return nil, nil, fmt.Errorf("error getting team snapshot %s: %w", r.ID, err)
+			return nil, nil, fmt.Errorf("error getting team snapshot: %w", err)
 		}
 		var t Team
 		err = ss.DataTo(&t)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error getting team snapshot data %s: %w", r.ID, err)
+			return nil, nil, fmt.Errorf("error getting team snapshot data: %w", err)
 		}
-		teams[i] = t
+		teams = append(teams, t)
+		refs = append(refs, ss.Ref)
 	}
 	return teams, refs, nil
+}
+
+// TeamRefsByName is a type for quick lookups of teams by other name.
+type TeamRefsByName map[string]*firestore.DocumentRef
+
+func NewTeamRefsByName(teams []Team, refs []*firestore.DocumentRef) TeamRefsByName {
+	byName := make(TeamRefsByName)
+	duplicates := make(map[string][]Team)
+	for i, t := range teams {
+		for _, n := range t.OtherNames {
+			if _, ok := byName[n]; ok {
+				duplicates[n] = append(duplicates[n], t)
+			}
+			byName[n] = refs[i]
+		}
+	}
+	if len(duplicates) != 0 {
+		panic(fmt.Errorf("duplicate other names detected: %v", duplicates))
+	}
+	return byName
 }
