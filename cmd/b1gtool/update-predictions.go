@@ -107,7 +107,7 @@ func updatePredictions() {
 		log.Fatalf("Failed to get models: %v", err)
 	}
 
-	modelLookup := newModelRefsByName(models, mrefs)
+	modelLookup := firestore.NewModelRefsByName(models, mrefs)
 	gameLookup := newGameRefsByTeams(games, grefs)
 	predictions, err := pt.GetWritablePredictions(gameLookup, modelLookup, tps)
 	if err != nil {
@@ -345,7 +345,7 @@ type refPred struct {
 	pred firestore.ModelPrediction
 }
 
-func (pt *predictionTable) GetWritablePredictions(g *gameRefsByTeams, modelLookup *modelRefsByName, tps []teamPair) ([]refPred, error) {
+func (pt *predictionTable) GetWritablePredictions(g *gameRefsByTeams, modelLookup firestore.ModelRefsByName, tps []teamPair) ([]refPred, error) {
 	predictions := make([]refPred, 0)
 	for i, tp := range tps {
 		gref, swap, wrongNeutral, ok := g.Lookup(tp)
@@ -367,7 +367,7 @@ func (pt *predictionTable) GetWritablePredictions(g *gameRefsByTeams, modelLooku
 			if pt.missing[model][i] {
 				continue
 			}
-			mref, ok := (*modelLookup)[model]
+			mref, ok := modelLookup[model]
 			if !ok {
 				return nil, fmt.Errorf("failed to get model with name \"%s\"", model)
 			}
@@ -384,25 +384,4 @@ func (pt *predictionTable) GetWritablePredictions(g *gameRefsByTeams, modelLooku
 		}
 	}
 	return predictions, nil
-}
-
-// TODO: Separate library
-type modelRefsByName map[string]*fs.DocumentRef
-
-func newModelRefsByName(models []firestore.Model, refs []*fs.DocumentRef) *modelRefsByName {
-	out := make(modelRefsByName)
-	for i, model := range models {
-		out[model.ShortName] = refs[i]
-	}
-	return &out
-}
-
-type modelRefsBySystem map[string]*fs.DocumentRef
-
-func newModelRefsBySystem(models []firestore.Model, refs []*fs.DocumentRef) *modelRefsBySystem {
-	out := make(modelRefsBySystem)
-	for i, model := range models {
-		out[model.System] = refs[i]
-	}
-	return &out
 }

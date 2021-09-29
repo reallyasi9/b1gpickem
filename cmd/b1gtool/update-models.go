@@ -85,14 +85,8 @@ func updateModels() {
 		log.Fatalf("Error getting models: %v", err)
 	}
 
-	lookup := make(modelRefsByName)
-	rlookup := make(modelNamesByRef)
-	for i := range models {
-		model := models[i]
-		ref := refs[i]
-		lookup[model.System] = ref
-		rlookup[ref] = model.ShortName
-	}
+	lookup := firestore.NewModelRefsByName(models, refs)
+	rlookup := lookup.ReverseMap()
 
 	pt, err := newPerformanceTable(perfURL, lookup)
 	if err != nil {
@@ -164,7 +158,7 @@ var headerRegex = regexp.MustCompile(`(?ism)<th.*?>\s*(?:<a.*?>)?\s*(.*?)\s*(?:<
 var rowRegex = regexp.MustCompile(`(?ism)<tr><td.*?>.*?</td></tr>`)
 var valueRegex = regexp.MustCompile(`(?ism)<td.*?>(?:<font.*?>)?(.*?)(?:</font>)?</td>`)
 
-func newPerformanceTable(f string, lookup modelRefsByName) (*performanceTable, error) {
+func newPerformanceTable(f string, lookup firestore.ModelRefsByName) (*performanceTable, error) {
 	var rc io.ReadCloser
 	if _, err := url.Parse(f); err == nil {
 		httpClient := http.DefaultClient
@@ -270,5 +264,3 @@ func newPerformanceTable(f string, lookup modelRefsByName) (*performanceTable, e
 
 	return &pt, nil
 }
-
-type modelNamesByRef map[*fs.DocumentRef]string

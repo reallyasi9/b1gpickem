@@ -187,3 +187,37 @@ func (mp ModelTeamPoints) String() string {
 	sb.WriteString(treeFloat64("HomeAdvantage", 0, true, mp.HomeAdvantage))
 	return sb.String()
 }
+
+// ModelRefsByName stores references to Model documents by ShortName ("line...")
+type ModelRefsByName map[string]*fs.DocumentRef
+
+func NewModelRefsByName(models []Model, refs []*fs.DocumentRef) ModelRefsByName {
+	out := make(ModelRefsByName)
+	duplicates := make(map[string][]Model)
+	for i, model := range models {
+		n := model.ShortName
+		if _, ok := out[n]; ok {
+			duplicates[n] = append(duplicates[n], model)
+		}
+		out[n] = refs[i]
+	}
+	if len(duplicates) > 0 {
+		panic(fmt.Errorf("duplicate model short names detected: %v", duplicates))
+	}
+	return out
+}
+
+func (m ModelRefsByName) ReverseMap() map[*fs.DocumentRef]string {
+	o := make(map[*fs.DocumentRef]string)
+	duplicates := make(map[*fs.DocumentRef][]string)
+	for n, r := range m {
+		if _, ok := o[r]; ok {
+			duplicates[r] = append(duplicates[r], n)
+		}
+		o[r] = n
+	}
+	if len(duplicates) > 0 {
+		panic(fmt.Errorf("duplicate model references detected: %v", duplicates))
+	}
+	return o
+}

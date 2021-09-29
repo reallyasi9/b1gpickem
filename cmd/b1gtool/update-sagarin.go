@@ -120,14 +120,14 @@ func updateSagarin() {
 	if err != nil {
 		log.Fatalf("Failed to get models: %v", err)
 	}
-	modelLookup := newModelRefsByName(models, refs)
+	modelLookup := firestore.NewModelRefsByName(models, refs)
 
 	// Get the four Sagarin models in order
 	modelNames := []string{"linesag", "linesagpred", "linesaggm", "linesagr"}
 	modelRefs := make([]*fs.DocumentRef, 4)
 	for i, n := range modelNames {
 		var ok bool
-		if modelRefs[i], ok = (*modelLookup)[n]; !ok {
+		if modelRefs[i], ok = modelLookup[n]; !ok {
 			log.Fatalf("Failed to find reference to model \"%s\"", n)
 		}
 	}
