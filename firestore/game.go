@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	fs "cloud.google.com/go/firestore"
 )
 
 // Game is a ground truth game.
@@ -273,4 +274,53 @@ func GetGames(ctx context.Context, client *firestore.Client, week *firestore.Doc
 		games[i] = g
 	}
 	return games, refs, nil
+}
+
+type Matchup struct {
+	Home    *fs.DocumentRef
+	Away    *fs.DocumentRef
+	Neutral bool
+}
+
+// GameRefsByMatchup is a struct for quick lookups of games by home/away teams and for correcting who is home, who is away, and whether the game is at a neutral site.
+type GameRefsByMatchup map[Matchup]*fs.DocumentRef
+
+func NewGameRefsByMatchup(games []Game, refs []*fs.DocumentRef) GameRefsByMatchup {
+	m := make(GameRefsByMatchup)
+	for i, g := range games {
+		matchup := Matchup{
+			Home:    g.HomeTeam,
+			Away:    g.AwayTeam,
+			Neutral: g.NeutralSite,
+		}
+		m[matchup] = refs[i]
+	}
+	return m
+}
+
+func (g GameRefsByMatchup) LookupCorrectMatchup(m Matchup) (game *fs.DocumentRef, swap bool, wrongNeutral bool, ok bool) {
+	if game, ok = g[m]; ok {
+		return
+	}
+
+	m.Neutral = !m.Neutral
+	if game, ok = g[m]; ok {
+		wrongNeutral = true
+		return
+	}
+
+	m.Home, m.Away = m.Away, m.Home
+	if game, ok = g[m]; ok {
+		swap = true
+		wrongNeutral = true
+		return
+	}
+
+	m.Neutral = !m.Neutral
+	if game, ok = g[m]; ok {
+		swap = true
+		return
+	}
+
+	return
 }
