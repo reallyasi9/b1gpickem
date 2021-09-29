@@ -82,7 +82,7 @@ func treeStringSlice(name string, indent int, last bool, value []string) string 
 	sb.WriteString(fmt.Sprintf(": slice[%d] ↓↓↓", len(value)))
 	ss := make([]string, len(value))
 	for i, s := range value {
-		ss[i] = fmt.Sprintf("%*d: %s", indent+4, i, s)
+		ss[i] = fmt.Sprintf("│%*d: %s", indent+3, i, s)
 	}
 	if len(ss) > 0 {
 		sb.WriteRune('\n')
@@ -97,7 +97,7 @@ func treeFloat64Slice(name string, indent int, last bool, value []float64) strin
 	sb.WriteString(fmt.Sprintf(": slice[%d] ↓↓↓", len(value)))
 	ss := make([]string, len(value))
 	for i, s := range value {
-		ss[i] = fmt.Sprintf("%*d: %f", indent+4, i, s)
+		ss[i] = fmt.Sprintf("│%*d: %f", indent+3, i, s)
 	}
 	if len(ss) > 0 {
 		sb.WriteRune('\n')
@@ -112,7 +112,7 @@ func treeRefSlice(name string, indent int, last bool, value []*fs.DocumentRef) s
 	sb.WriteString(fmt.Sprintf(": slice[%d] ↓↓↓", len(value)))
 	ss := make([]string, len(value))
 	for i, s := range value {
-		ss[i] = fmt.Sprintf("%*d: %s", indent+4, i, pathOrNil(s))
+		ss[i] = fmt.Sprintf("│%*d: %s", indent+3, i, pathOrNil(s))
 	}
 	if len(ss) > 0 {
 		sb.WriteRune('\n')
@@ -127,7 +127,7 @@ func treeUint64RefMap(name string, indent int, last bool, value map[uint64]*fs.D
 	sb.WriteString(fmt.Sprintf(": map[%d] ↓↓↓", len(value)))
 	ss := make([]string, len(value))
 	for i, s := range value {
-		ss[i] = fmt.Sprintf("%*d: %s", indent+4, i, pathOrNil(s))
+		ss[i] = fmt.Sprintf("│%*d: %s", indent+3, i, pathOrNil(s))
 	}
 	if len(ss) > 0 {
 		sb.WriteRune('\n')
@@ -142,7 +142,7 @@ func treeStringRefMap(name string, indent int, last bool, value map[string]*fs.D
 	sb.WriteString(fmt.Sprintf(": map[%d] ↓↓↓", len(value)))
 	ss := make([]string, 0, len(value))
 	for i, s := range value {
-		ss = append(ss, fmt.Sprintf("%*s%s: %s", indent+4, " ", i, pathOrNil(s)))
+		ss = append(ss, fmt.Sprintf("│%*s%s: %s", indent+3, " ", i, pathOrNil(s)))
 	}
 	if len(ss) > 0 {
 		sb.WriteRune('\n')

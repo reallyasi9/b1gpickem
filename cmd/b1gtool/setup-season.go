@@ -101,6 +101,9 @@ func setupSeason() {
 	}
 	log.Printf("Loaded %d games\n", games.Len())
 
+	// eliminate teams that are not in games
+	teams = teams.EliminateNonContenders(games)
+
 	// set everything up to write to firestore
 	seasonRef := fsClient.Collection("seasons").Doc(strconv.Itoa(year))
 	season := firestore.Season{

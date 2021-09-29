@@ -6,17 +6,16 @@ import (
 	"strings"
 	"time"
 
-	"cloud.google.com/go/firestore"
 	fs "cloud.google.com/go/firestore"
 )
 
 // Game is a ground truth game.
 type Game struct {
 	// HomeTeam is the nominal home team in the game.
-	HomeTeam *firestore.DocumentRef `firestore:"home_team"`
+	HomeTeam *fs.DocumentRef `firestore:"home_team"`
 
 	// AwayTeam is the nominal away team in the game.
-	AwayTeam *firestore.DocumentRef `firestore:"away_team"`
+	AwayTeam *fs.DocumentRef `firestore:"away_team"`
 
 	// StartTime is the nominal kickoff time of the game.
 	StartTime time.Time `firestore:"start_time"`
@@ -28,7 +27,7 @@ type Game struct {
 	NeutralSite bool `firestore:"neutral_site"`
 
 	// Venue is the venue of the game.
-	Venue *firestore.DocumentRef `jsfirestoreon:"venue"`
+	Venue *fs.DocumentRef `jsfirestoreon:"venue"`
 
 	// HomePoints is the number of points earned by the home team at end of game.
 	HomePoints *int `firestore:"home_points"`
@@ -58,10 +57,10 @@ func (g Game) String() string {
 	return sb.String()
 }
 
-// Game is a game's data for storing picks in Firestore.
+// Game is a game's data for storing picks in fs.
 type SlateGame struct {
 	// Teams are references to the teams playing in the game.
-	Teams []*firestore.DocumentRef `firestore:"teams"`
+	Teams []*fs.DocumentRef `firestore:"teams"`
 
 	// Ranks are the rankings of the teams playing the game. The ranks correspond to the teams in the Teams array. A rank of zero means the team is unranked.
 	Ranks []int `firestore:"ranks"`
@@ -85,13 +84,13 @@ type SlateGame struct {
 	NeutralSite bool `firestore:"neutral_site"`
 
 	// Venue is a reference to a Venue document for this game.
-	Venue *firestore.DocumentRef `firestore:"venue"`
+	Venue *fs.DocumentRef `firestore:"venue"`
 
 	// NoisySpread is the spread against which the pickers are picking this game. A value of zero means a straight pick. Positive values favor `HomeTeam`.
 	NoisySpread int `firestore:"noisy_spread"`
 
 	// Predictions are references to predictions from the various models, indexed by model short name.
-	Predictions map[string]*firestore.DocumentRef `firestore:"predictions"`
+	Predictions map[string]*fs.DocumentRef `firestore:"predictions"`
 }
 
 // String implements the Stringer interface.
@@ -168,8 +167,8 @@ func (g SlateGame) BuildSlateRow(ctx context.Context) ([]string, error) {
 	team2Ref := g.Teams[idx2]
 
 	var (
-		team1Doc *firestore.DocumentSnapshot
-		team2Doc *firestore.DocumentSnapshot
+		team1Doc *fs.DocumentSnapshot
+		team2Doc *fs.DocumentSnapshot
 		err      error
 	)
 
@@ -255,7 +254,7 @@ func (g SlateGame) BuildSlateRow(ctx context.Context) ([]string, error) {
 }
 
 // GetGames returns a collection of teams for a given season.
-func GetGames(ctx context.Context, client *firestore.Client, week *firestore.DocumentRef) ([]Game, []*firestore.DocumentRef, error) {
+func GetGames(ctx context.Context, client *fs.Client, week *fs.DocumentRef) ([]Game, []*fs.DocumentRef, error) {
 	refs, err := week.Collection("games").DocumentRefs(ctx).GetAll()
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting game document refs for week %s: %w", week.ID, err)
@@ -277,8 +276,8 @@ func GetGames(ctx context.Context, client *firestore.Client, week *firestore.Doc
 }
 
 type Matchup struct {
-	Home    *fs.DocumentRef
-	Away    *fs.DocumentRef
+	Home    string
+	Away    string
 	Neutral bool
 }
 
@@ -289,8 +288,8 @@ func NewGameRefsByMatchup(games []Game, refs []*fs.DocumentRef) GameRefsByMatchu
 	m := make(GameRefsByMatchup)
 	for i, g := range games {
 		matchup := Matchup{
-			Home:    g.HomeTeam,
-			Away:    g.AwayTeam,
+			Home:    g.HomeTeam.ID,
+			Away:    g.AwayTeam.ID,
 			Neutral: g.NeutralSite,
 		}
 		m[matchup] = refs[i]

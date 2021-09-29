@@ -98,6 +98,21 @@ func replaceCommonAbbreviations(ss []string) []string {
 	return out
 }
 
+func remove(ss []string, x string) []string {
+	// defensive copy
+	result := make([]string, len(ss))
+	copy(result, ss)
+	n := 0
+	for _, s := range result {
+		if s != x {
+			result[n] = s
+			n++
+		}
+	}
+	result = result[:n]
+	return result
+}
+
 func distinctStrings(ss []string) []string {
 	// defensive copy
 	result := make([]string, len(ss))
@@ -142,7 +157,7 @@ func (t Team) toFirestore() firestore.Team {
 
 	abbr := coalesceString(t.Abbreviation, strings.ToUpper(t.School))
 	ft := firestore.Team{
-		Abbreviation: coalesceString(t.Abbreviation, strings.ToUpper(t.School)),
+		Abbreviation: abbr,
 		ShortNames:   []string{abbr},
 		OtherNames:   otherNames,
 		School:       t.School,
@@ -181,6 +196,36 @@ func (tc TeamCollection) RefByID(id int64) (*fs.DocumentRef, bool) {
 		return tc.refs[i], true
 	}
 	return nil, false
+}
+
+func (tc TeamCollection) EliminateNonContenders(gc GameCollection) TeamCollection {
+	teams := make(map[int64]struct{})
+	for _, g := range gc.games {
+		teams[g.HomeID] = struct{}{}
+		teams[g.AwayID] = struct{}{}
+	}
+
+	tOut := make([]Team, len(teams))
+	fOut := make([]firestore.Team, len(teams))
+	rOut := make([]*fs.DocumentRef, len(teams))
+	iOut := make(map[int64]int)
+
+	n := 0
+	for id := range teams {
+		io := tc.ids[id]
+		tOut[n] = tc.teams[io]
+		fOut[n] = tc.fsTeams[io]
+		rOut[n] = tc.refs[io]
+		iOut[id] = n
+		n++
+	}
+
+	return TeamCollection{
+		teams:   tOut,
+		fsTeams: fOut,
+		refs:    rOut,
+		ids:     iOut,
+	}
 }
 
 func GetTeams(client *http.Client, key string) (TeamCollection, error) {

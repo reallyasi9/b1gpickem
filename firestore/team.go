@@ -105,17 +105,29 @@ type TeamRefsByName map[string]*firestore.DocumentRef
 
 func NewTeamRefsByName(teams []Team, refs []*firestore.DocumentRef) TeamRefsByName {
 	byName := make(TeamRefsByName)
+	catcher := make(map[string]Team)
 	duplicates := make(map[string][]Team)
 	for i, t := range teams {
 		for _, n := range t.OtherNames {
-			if _, ok := byName[n]; ok {
+			if dd, ok := catcher[n]; ok {
+				if _, found := duplicates[n]; !found {
+					duplicates[n] = []Team{dd}
+				}
 				duplicates[n] = append(duplicates[n], t)
 			}
+			catcher[n] = t
 			byName[n] = refs[i]
 		}
 	}
 	if len(duplicates) != 0 {
-		panic(fmt.Errorf("duplicate other names detected: %v", duplicates))
+		var sb strings.Builder
+		for name, ts := range duplicates {
+			sb.WriteString(fmt.Sprintf("%s (%d teams):\n", name, len(ts)))
+			for _, t := range ts {
+				sb.WriteString(fmt.Sprintf("%s\n", t))
+			}
+		}
+		panic(fmt.Errorf("duplicate other names detected: %v", sb.String()))
 	}
 	return byName
 }

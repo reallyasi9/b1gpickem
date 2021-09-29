@@ -109,7 +109,7 @@ func updatePredictions() {
 
 	modelLookup := firestore.NewModelRefsByName(models, mrefs)
 	gameLookup := firestore.NewGameRefsByMatchup(games, grefs)
-	predictions, err := pt.GetWritablePredictions(gameLookup, modelLookup, tps)
+	predictions, err := pt.GetWritablePredictions(gameLookup, modelLookup, tps, seasonRef)
 	if err != nil {
 		log.Fatalf("Failed making writable predictions: %v", err)
 	}
@@ -215,6 +215,9 @@ func newPredictionTable(f string) (*predictionTable, error) {
 				if !strings.HasPrefix(colname, "line") {
 					continue
 				}
+				if colname == "linestd" {
+					continue // not a real prediction: just the standard deviation
+				}
 				f := 0.
 				m := true
 				if val != "" {
@@ -275,7 +278,7 @@ func (pt *predictionTable) Matchups(lookup firestore.TeamRefsByName) ([]firestor
 		if !ok {
 			return nil, fmt.Errorf("no team matching away team '%s' in game %d", at, i)
 		}
-		tps[i] = firestore.Matchup{Home: href, Away: aref, Neutral: pt.neutral[i]}
+		tps[i] = firestore.Matchup{Home: href.ID, Away: aref.ID, Neutral: pt.neutral[i]}
 	}
 	return tps, nil
 }
@@ -285,21 +288,21 @@ type refPred struct {
 	pred firestore.ModelPrediction
 }
 
-func (pt *predictionTable) GetWritablePredictions(g firestore.GameRefsByMatchup, modelLookup firestore.ModelRefsByName, ms []firestore.Matchup) ([]refPred, error) {
+func (pt *predictionTable) GetWritablePredictions(g firestore.GameRefsByMatchup, modelLookup firestore.ModelRefsByName, ms []firestore.Matchup, season *fs.DocumentRef) ([]refPred, error) {
 	predictions := make([]refPred, 0)
 	for i, tp := range ms {
 		gref, swap, wrongNeutral, ok := g.LookupCorrectMatchup(tp)
-		homeRef := tp.Home
-		awayRef := tp.Away
+		homeID := tp.Home
+		awayID := tp.Away
 		if !ok {
-			return nil, fmt.Errorf("failed to get game with matchup %s @ %s", tp.Away.ID, tp.Home.ID)
+			return nil, fmt.Errorf("failed to get game with matchup %s @ %s", tp.Away, tp.Home)
 		}
 		if swap {
-			log.Printf("Game %s (%s @ %s) has home/away swapped between predictions and ground truth", gref.ID, tp.Home.ID, tp.Away.ID)
-			homeRef, awayRef = awayRef, homeRef
+			log.Printf("Game %s (%s @ %s) has home/away swapped between predictions and ground truth", gref.ID, tp.Home, tp.Away)
+			homeID, awayID = awayID, homeID
 		}
 		if wrongNeutral {
-			log.Printf("Game %s (%s v %s) has wrong neutral site flag (should be %t)", gref.ID, tp.Away.ID, tp.Home.ID, !tp.Neutral)
+			log.Printf("Game %s (%s v %s) has wrong neutral site flag (should be %t)", gref.ID, tp.Away, tp.Home, !tp.Neutral)
 		}
 		// TODO: match model to prediction
 		col := gref.Collection("predictions")
@@ -314,8 +317,8 @@ func (pt *predictionTable) GetWritablePredictions(g firestore.GameRefsByMatchup,
 			p := pt.predictions[model][i]
 			mp := firestore.ModelPrediction{
 				Model:       mref,
-				HomeTeam:    homeRef,
-				AwayTeam:    awayRef,
+				HomeTeam:    season.Collection("teams").Doc(homeID),
+				AwayTeam:    season.Collection("teams").Doc(awayID),
 				NeutralSite: tp.Neutral != wrongNeutral,
 				Spread:      p,
 			}
