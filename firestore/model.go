@@ -193,13 +193,18 @@ type ModelRefsByName map[string]*fs.DocumentRef
 
 func NewModelRefsByName(models []Model, refs []*fs.DocumentRef) ModelRefsByName {
 	out := make(ModelRefsByName)
+	cought := make(map[string]Model)
 	duplicates := make(map[string][]Model)
 	for i, model := range models {
 		n := model.ShortName
-		if _, ok := out[n]; ok {
+		if dd, ok := cought[n]; ok {
+			if _, found := duplicates[n]; !found {
+				duplicates[n] = []Model{dd}
+			}
 			duplicates[n] = append(duplicates[n], model)
 		}
 		out[n] = refs[i]
+		cought[n] = model
 	}
 	if len(duplicates) > 0 {
 		panic(fmt.Errorf("duplicate model short names detected: %v", duplicates))
