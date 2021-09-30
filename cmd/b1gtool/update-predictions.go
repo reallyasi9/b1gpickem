@@ -304,7 +304,7 @@ func (pt *predictionTable) GetWritablePredictions(g firestore.GameRefsByMatchup,
 		if wrongNeutral {
 			log.Printf("Game %s (%s v %s) has wrong neutral site flag (should be %t)", gref.ID, tp.Away, tp.Home, !tp.Neutral)
 		}
-		// TODO: match model to prediction
+
 		col := gref.Collection("predictions")
 		for model := range pt.predictions {
 			if pt.missing[model][i] {
