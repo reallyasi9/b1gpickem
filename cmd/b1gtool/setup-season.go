@@ -109,6 +109,7 @@ func setupSeason() {
 	season := firestore.Season{
 		Year:      year,
 		StartTime: weeks.FirstStartTime(),
+		Pickers:   make(map[string]*fs.DocumentRef),
 	}
 	if err := weeks.LinkRefs(seasonRef.Collection("weeks")); err != nil {
 		panic(err)
