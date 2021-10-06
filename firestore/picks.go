@@ -140,13 +140,13 @@ func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 	if math.Abs(p.PredictedSpread) >= 14 {
 		notes = append(notes, "Maybe this should have been a noisy spread game?")
 	}
-	if p.NeutralDisagreement {
-		if game.NeutralSite {
-			notes = append(notes, "NOTE: This game is at a neutral site!")
-		} else {
-			notes = append(notes, "NOTE: This game is NOT taking place at a neutral site!")
-		}
-	}
+	// if p.NeutralDisagreement {
+	// 	if game.NeutralSite {
+	// 		notes = append(notes, "NOTE: This game is at a neutral site!")
+	// 	} else {
+	// 		notes = append(notes, "NOTE: This game is NOT taking place at a neutral site!")
+	// 	}
+	// }
 	if p.HomeAwaySwap {
 		notes = append(notes, "NOTE: The slate seems to be incorrect about which team is home and which is away!")
 	}

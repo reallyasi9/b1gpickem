@@ -114,7 +114,7 @@ func updateSagarin() {
 	if err != nil {
 		log.Fatalf("Failed to get teams: %v", err)
 	}
-	teamLookup := firestore.NewTeamRefsByName(teams, refs)
+	teamLookup := firestore.NewTeamRefsByOtherName(teams, refs)
 
 	models, refs, err := firestore.GetModels(ctx, fsClient)
 	if err != nil {

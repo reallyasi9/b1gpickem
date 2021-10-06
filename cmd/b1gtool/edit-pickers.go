@@ -105,8 +105,8 @@ var pickersToDeactivate []string
 // pickersToActivate are the pickers that should be added to a given season.
 var pickersToActivate []string
 
-// season is the season to which the pickers should be added.
-var season int
+// pickerSeason is the pickerSeason to which the pickers should be added.
+var pickerSeason int
 
 // pickerUsage is the usage documentation for the edit-pickers subcommand.
 func pickerUsage() {
@@ -134,7 +134,7 @@ func init() {
 	pickerFlagSet.Var(&addPickers{&pickersToEdit}, "edit", "Edit `picker` by specifying short_name[:full_name[:join_date]]. Fields not specified (or empty) will retain their values in Firestore. Flag can be specified multiple times.")
 	pickerFlagSet.Var(&shortNames{&pickersToActivate}, "activate", "Activate `picker` for a given season. Specify picker by short_name. Flag can be specified multiple times.")
 	pickerFlagSet.Var(&shortNames{&pickersToDeactivate}, "deactivate", "Deactivate `picker` from a given season. Specify picker by short_name. Flag can be specified multiple times.")
-	pickerFlagSet.IntVar(&season, "season", 0, "Choose a `season` to activate or deactivate pickers. If equal to zero, the most recent season will be used.")
+	pickerFlagSet.IntVar(&pickerSeason, "season", -1, "Choose a `season` to activate or deactivate pickers. If negative, the most recent season will be used.")
 
 	Commands["edit-pickers"] = editPickers
 	Usage["edit-pickers"] = pickerUsage
@@ -160,11 +160,11 @@ func editPickers() {
 		log.Fatalf("Unable to edit pickers: %v", err)
 	}
 
-	if err := pickerActivate(ctx, fsClient, pickersToActivate, season); err != nil {
+	if err := pickerActivate(ctx, fsClient, pickersToActivate, pickerSeason); err != nil {
 		log.Fatalf("Unable to activate pickers: %v", err)
 	}
 
-	if err := pickerDeactivate(ctx, fsClient, pickersToDeactivate, season); err != nil {
+	if err := pickerDeactivate(ctx, fsClient, pickersToDeactivate, pickerSeason); err != nil {
 		log.Fatalf("Unable to deactivate pickers: %v", err)
 	}
 

@@ -20,15 +20,15 @@ type Season struct {
 	Pickers map[string]*firestore.DocumentRef `firestore:"pickers"`
 }
 
-// GetSeason gets the season defined by `year`. If `year<=0`, the most recent season (by `start_time`) is returned.
+// GetSeason gets the season defined by `year`. If `year<0`, the most recent season (by `start_time`) is returned.
 func GetSeason(ctx context.Context, client *firestore.Client, year int) (Season, *firestore.DocumentRef, error) {
 	var s Season
 	seasonCol := client.Collection("seasons")
 	var q firestore.Query
-	if year > 0 {
-		q = seasonCol.Where("year", "==", year).Limit(1)
-	} else {
+	if year < 0 {
 		q = seasonCol.OrderBy("start_time", firestore.Desc).Limit(1)
+	} else {
+		q = seasonCol.Where("year", "==", year).Limit(1)
 	}
 	docs, err := q.Documents(ctx).GetAll()
 	if err != nil {

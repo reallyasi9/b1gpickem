@@ -90,7 +90,7 @@ func updatePredictions() {
 		log.Fatalf("Failed to get teams: %v", err)
 	}
 
-	teamLookup := firestore.NewTeamRefsByName(teams, refs)
+	teamLookup := firestore.NewTeamRefsByOtherName(teams, refs)
 	tps, err := pt.Matchups(teamLookup)
 	if err != nil {
 		log.Fatalf("Failed to match teams to refs: %v", err)

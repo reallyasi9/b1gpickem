@@ -103,7 +103,7 @@ func GetTeams(ctx context.Context, client *firestore.Client, season *firestore.D
 // TeamRefsByName is a type for quick lookups of teams by other name.
 type TeamRefsByName map[string]*firestore.DocumentRef
 
-func NewTeamRefsByName(teams []Team, refs []*firestore.DocumentRef) TeamRefsByName {
+func NewTeamRefsByOtherName(teams []Team, refs []*firestore.DocumentRef) TeamRefsByName {
 	byName := make(TeamRefsByName)
 	catcher := make(map[string]Team)
 	duplicates := make(map[string][]Team)
@@ -128,6 +128,35 @@ func NewTeamRefsByName(teams []Team, refs []*firestore.DocumentRef) TeamRefsByNa
 			}
 		}
 		panic(fmt.Errorf("duplicate other names detected: %v", sb.String()))
+	}
+	return byName
+}
+
+func NewTeamRefsByShortName(teams []Team, refs []*firestore.DocumentRef) TeamRefsByName {
+	byName := make(TeamRefsByName)
+	catcher := make(map[string]Team)
+	duplicates := make(map[string][]Team)
+	for i, t := range teams {
+		for _, n := range t.ShortNames {
+			if dd, ok := catcher[n]; ok {
+				if _, found := duplicates[n]; !found {
+					duplicates[n] = []Team{dd}
+				}
+				duplicates[n] = append(duplicates[n], t)
+			}
+			catcher[n] = t
+			byName[n] = refs[i]
+		}
+	}
+	if len(duplicates) != 0 {
+		var sb strings.Builder
+		for name, ts := range duplicates {
+			sb.WriteString(fmt.Sprintf("%s (%d teams):\n", name, len(ts)))
+			for _, t := range ts {
+				sb.WriteString(fmt.Sprintf("%s\n", t))
+			}
+		}
+		panic(fmt.Errorf("duplicate short names detected: %v", sb.String()))
 	}
 	return byName
 }
