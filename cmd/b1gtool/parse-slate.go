@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	fs "cloud.google.com/go/firestore"
 	"cloud.google.com/go/storage"
@@ -132,6 +133,46 @@ func parseSlate() {
 		return
 	}
 
+	ct, err := getCreationTime(ctx, slateLocation)
+	if err != nil {
+		log.Fatalf("Unable to stat time from file: %v", err)
+	}
+	slate := firestore.Slate{
+		Created:  ct,
+		FileName: slateLocation,
+	}
+	slateID := time.Now().Format(time.UnixDate)
+	slateRef := weekRef.Collection("slates").Doc(slateID)
+	err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
+		var err error
+		if Force {
+			err = t.Set(slateRef, &slate)
+		} else {
+			err = t.Create(slateRef, &slate)
+		}
+		if err != nil {
+			return err
+		}
+
+		for _, game := range sgames {
+			gameID := game.Game.ID // convenient
+			gameRef := slateRef.Collection("games").Doc(gameID)
+			if Force {
+				err = t.Set(gameRef, &game)
+			} else {
+				err = t.Create(gameRef, &game)
+			}
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Fatalf("Unable to store slate and games in firestore: %v", err)
+	}
 }
 
 func getFileOrGSReader(ctx context.Context, f string) (io.ReadCloser, error) {
@@ -166,6 +207,43 @@ func getFileOrGSReader(ctx context.Context, f string) (io.ReadCloser, error) {
 	}
 
 	return r, nil
+}
+
+// getCreationTime gets the creation time of a file on disk or in Google Storage.
+func getCreationTime(ctx context.Context, f string) (time.Time, error) {
+	var t time.Time
+	u, err := url.Parse(f)
+	if err != nil {
+		return t, err
+	}
+	switch u.Scheme {
+	case "gs":
+		gsClient, err := storage.NewClient(ctx)
+		if err != nil {
+			return t, err
+		}
+		bucket := gsClient.Bucket(u.Host)
+		obj := bucket.Object(u.Path)
+		attrs, err := obj.Attrs(ctx)
+		if err != nil {
+			return t, err
+		}
+		t = attrs.Created
+
+	case "file":
+		fallthrough
+	case "":
+		s, err := os.Stat(f)
+		if err != nil {
+			return t, err
+		}
+		t = s.ModTime()
+
+	default:
+		return t, fmt.Errorf("unable to determine how to stat '%s'", f)
+	}
+
+	return t, nil
 }
 
 func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl firestore.GameRefsByMatchup) ([]firestore.SlateGame, error) {
