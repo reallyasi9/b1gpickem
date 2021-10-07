@@ -17,5 +17,6 @@ cmd/b1gtool/b1gtool
 cmd/b1gtool/.firebaserc
 cmd/b1gtool/firebase.json
 cmd/b1gtool/firebase-data
+cmd/pickem4me/pickem4me
 
 .vscode
