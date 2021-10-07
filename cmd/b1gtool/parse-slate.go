@@ -141,7 +141,7 @@ func parseSlate() {
 		Created:  ct,
 		FileName: slateLocation,
 	}
-	slateID := time.Now().Format(time.UnixDate)
+	slateID := ct.Format(time.UnixDate)
 	slateRef := weekRef.Collection("slates").Doc(slateID)
 	err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
 		var err error
