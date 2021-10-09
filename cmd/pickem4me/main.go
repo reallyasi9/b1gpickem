@@ -95,10 +95,70 @@ func main() {
 	}
 
 	slateRef := slateSSs[0].Ref
-	slateGames, err := slateRef.Collection("games").Documents(ctx).GetAll()
+	sgss, err := slateRef.Collection("games").Documents(ctx).GetAll()
 	if err != nil {
 		log.Fatalf("Unable to get games from slate at path \"%s\": %v", slateRef.Path, err)
 	}
-	log.Printf("Read %d games from slate at path \"%s\"", len(slateGames), slateRef.Path)
+	log.Printf("Read %d games from slate at path \"%s\"", len(sgss), slateRef.Path)
+
+	perfs, _, err := firestore.GetMostRecentModelPerformances(ctx, fsClient, weekRef)
+	if err != nil {
+		log.Fatalf("Unable to get model performances: %v\nHave you run update-models?", err)
+	}
+
+	// TODO: performance by model short name... need to get short names from perf.Model
+	models, modelRefs, err := firestore.GetModels(ctx, fsClient)
+	if err != nil {
+		log.Fatalf("Unable to get model information: %v\nHave you run setup-model?", err)
+	}
+	modelLookup := firestore.NewModelRefsBySystem(models, modelRefs)
+
+	for _, ss := range sgss {
+		var sgame firestore.SlateGame
+		err = ss.DataTo(&sgame)
+		if err != nil {
+			log.Fatalf("Unable to convert SlateGame at path \"%s\": %v", ss.Ref.Path, err)
+		}
+
+		gamess, err := sgame.Game.Get(ctx)
+		if err != nil {
+			log.Fatalf("Unable to get game at path \"%s\": %v", sgame.Game.Path, err)
+		}
+		var game firestore.Game
+		err = gamess.DataTo(&game)
+		if err != nil {
+			log.Fatalf("Unable to convert Game at path \"%s\": %v", gamess.Ref.Path, err)
+		}
+
+		var modelChoice string
+		var gt gameType
+		switch {
+		case sgame.NoisySpread != 0:
+			modelChoice = nsSystem
+			gt = noisySpread
+		case sgame.Superdog:
+			modelChoice = sdSystem
+			gt = superdog
+		default:
+			modelChoice = suSystem
+			gt = straightUp
+		}
+
+		pick, err := pickEm(sgame, modelLookup, modelChoice, gt, fallback)
+		log.Print(pick)
+	}
+}
+
+type gameType int
+
+const (
+	straightUp gameType = iota
+	noisySpread
+	superdog
+)
+
+func pickEm(sg firestore.SlateGame, mlu firestore.ModelRefsByName, choice string, gt gameType, fallback bool) (firestore.Pick, error) {
+
+	predictions := sg.Game.Collection("predictions")
 
 }

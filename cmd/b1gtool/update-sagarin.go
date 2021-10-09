@@ -120,7 +120,7 @@ func updateSagarin() {
 	if err != nil {
 		log.Fatalf("Failed to get models: %v", err)
 	}
-	modelLookup := firestore.NewModelRefsByName(models, refs)
+	modelLookup := firestore.NewModelRefsByShortName(models, refs)
 
 	// Get the four Sagarin models in order
 	modelNames := []string{"linesag", "linesagpred", "linesaggm", "linesagr"}

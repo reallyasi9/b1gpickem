@@ -137,6 +137,33 @@ func (mp ModelPerformance) String() string {
 	return sb.String()
 }
 
+// GetMostRecentModelPerformances gets the most recent iteration of ModelPerformances for a given week.
+func GetMostRecentModelPerformances(ctx context.Context, fsClient *fs.Client, week *fs.DocumentRef) ([]ModelPerformance, []*fs.DocumentRef, error) {
+	coll := week.Collection("model-performances")
+	iter := coll.OrderBy("timestamp", fs.Desc).Limit(1).Documents(ctx)
+	ss, err := iter.GetAll()
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(ss) == 0 {
+		return nil, nil, fmt.Errorf("GetMostRecentModelPerformances(): no performances found for week \"%s\"", week.Path)
+	}
+
+	perfs := make([]ModelPerformance, len(ss))
+	refs := make([]*fs.DocumentRef, len(ss))
+	for i, mpss := range ss {
+		var mp ModelPerformance
+		err = mpss.DataTo(&mp)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create ModelPerformance from \"%s\": %w", mpss.Ref.Path, err)
+		}
+		perfs[i] = mp
+		refs[i] = mpss.Ref
+	}
+
+	return perfs, refs, nil
+}
+
 // ModelPrediction is a prediction made by a certain Model for a certain Game.
 type ModelPrediction struct {
 	// Model is a reference to the model that is making the prediction.
@@ -188,15 +215,39 @@ func (mp ModelTeamPoints) String() string {
 	return sb.String()
 }
 
-// ModelRefsByName stores references to Model documents by ShortName ("line...")
+// ModelRefsByName stores references to Model documents by either ShortName ("line...") or System name.
 type ModelRefsByName map[string]*fs.DocumentRef
 
-func NewModelRefsByName(models []Model, refs []*fs.DocumentRef) ModelRefsByName {
+// NewModelRefsByShortName creates a ModelRefsByName object ordered by ShortName.
+func NewModelRefsByShortName(models []Model, refs []*fs.DocumentRef) ModelRefsByName {
 	out := make(ModelRefsByName)
 	one := make(map[string]Model)
 	duplicates := make(map[string][]Model)
 	for i, model := range models {
 		n := model.ShortName
+		if dd, ok := one[n]; ok {
+			if _, found := duplicates[n]; !found {
+				duplicates[n] = []Model{dd}
+			}
+			duplicates[n] = append(duplicates[n], model)
+		}
+		out[n] = refs[i]
+		one[n] = model
+	}
+	if len(duplicates) > 0 {
+		panic(fmt.Errorf("duplicate model short names detected: %v", duplicates))
+	}
+	return out
+}
+
+// NewModelRefsBySystem creates a ModelRefsByName object ordered by System.
+// TODO: combine with above using interface.
+func NewModelRefsBySystem(models []Model, refs []*fs.DocumentRef) ModelRefsByName {
+	out := make(ModelRefsByName)
+	one := make(map[string]Model)
+	duplicates := make(map[string][]Model)
+	for i, model := range models {
+		n := model.System
 		if dd, ok := one[n]; ok {
 			if _, found := duplicates[n]; !found {
 				duplicates[n] = []Model{dd}

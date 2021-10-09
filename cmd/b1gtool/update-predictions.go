@@ -107,7 +107,7 @@ func updatePredictions() {
 		log.Fatalf("Failed to get models: %v", err)
 	}
 
-	modelLookup := firestore.NewModelRefsByName(models, mrefs)
+	modelLookup := firestore.NewModelRefsByShortName(models, mrefs)
 	gameLookup := firestore.NewGameRefsByMatchup(games, grefs)
 	predictions, err := pt.GetWritablePredictions(gameLookup, modelLookup, tps, seasonRef)
 	if err != nil {

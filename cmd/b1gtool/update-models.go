@@ -85,10 +85,11 @@ func updateModels() {
 		log.Fatalf("Error getting models: %v", err)
 	}
 
-	lookup := firestore.NewModelRefsByName(models, refs)
+	lookup := firestore.NewModelRefsByShortName(models, refs)
+	slookup := firestore.NewModelRefsBySystem(models, refs)
 	rlookup := lookup.ReverseMap()
 
-	pt, err := newPerformanceTable(perfURL, lookup)
+	pt, err := newPerformanceTable(perfURL, slookup)
 	if err != nil {
 		log.Fatalf("Error parsing performance table: %v", err)
 	}
