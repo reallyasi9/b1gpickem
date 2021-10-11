@@ -144,7 +144,7 @@ func main() {
 			gt = straightUp
 		}
 
-		pick, err := pickEm(sgame, modelLookup, modelChoice, gt, fallback)
+		pick, err := pickEm(ctx, fsClient, sgame, modelLookup, perfs, modelChoice, gt, fallback)
 		log.Print(pick)
 	}
 }
@@ -157,8 +157,71 @@ const (
 	superdog
 )
 
-func pickEm(sg firestore.SlateGame, mlu firestore.ModelRefsByName, choice string, gt gameType, fallback bool) (firestore.Pick, error) {
+func pickEm(ctx context.Context, fsClient *fs.Client, sg firestore.SlateGame, mlu firestore.ModelRefsByName, perfs []firestore.ModelPerformance, choice string, gt gameType, fallback bool) (firestore.Pick, error) {
+	// TODO: fill out Pick from SlateGame
+	var p firestore.Pick
 
-	predictions := sg.Game.Collection("predictions")
+	predictions, _, err := firestore.GetPredictions(ctx, fsClient, sg.Game)
+	if err != nil {
+		return p, fmt.Errorf("unable to get predictions: %v", err)
+	}
+
+	// If a specific choice is made, try to get that first.
+	var model *fs.DocumentRef
+	if choice != "" {
+		var ok bool
+		model, ok = mlu[choice]
+		if !ok && !fallback {
+			return p, fmt.Errorf("model '%s' not found")
+		}
+		if !ok {
+			model, ok, err = getFallbackModel(ctx, fsClient, predictions, gt)
+			if err != nil {
+				// TODO: handle error
+			}
+		}
+		if !ok {
+			p, ok, err = getScoreModelPick(ctx, fsClient, sg.Game)
+			if err != nil {
+				// TODO: handle error
+			}
+			if !ok {
+				// TODO: handle not found?
+			}
+			return p, nil
+		}
+	} else {
+		var ok bool
+		model, ok, err = getFallbackModel(ctx, fsClient, predictions, gt)
+		if err != nil {
+			// TODO: handle error
+		}
+		if !ok {
+			p, ok, err = getScoreModelPick(ctx, fsClient, sg.Game)
+			if err != nil {
+				// TODO: handle error
+			}
+			if !ok {
+				// TODO: handle not found?
+			}
+			return p, nil
+		}
+	}
+
+	pred, _, ok, err := firestore.GetPredictionByModel(ctx, fsClient, sg.Game, model)
+	if err != nil {
+		// TODO: handle error
+	}
+	if !ok {
+		// TODO: handle not found?
+	}
+
+	p.PredictedSpread = pred.Spread
+	// TODO: get prob from spread and model performance
+	if pred.Spread < 0 {
+		// TODO: get teams from game?
+	}
+
+	return p, nil
 
 }

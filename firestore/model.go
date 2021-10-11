@@ -183,6 +183,49 @@ type ModelPrediction struct {
 	Spread float64 `firestore:"spread"`
 }
 
+// GetPredictionByModel looks up a prediction for a game by document ref.
+func GetPredictionByModel(ctx context.Context, client *fs.Client, game *fs.DocumentRef, model *fs.DocumentRef) (ModelPrediction, *fs.DocumentRef, bool, error) {
+	var p ModelPrediction
+
+	snaps, err := game.Collection("predictions").Where("model", "==", model).Limit(1).Documents(ctx).GetAll()
+	if err != nil {
+		return p, nil, false, fmt.Errorf("error getting prediction document for game %s matching ref %s: %v", game.ID, model.ID, err)
+	}
+	if len(snaps) == 0 {
+		return p, nil, false, nil
+	}
+	err = snaps[0].DataTo(&p)
+	if err != nil {
+		return p, nil, false, fmt.Errorf("error creating ModelPrediction for game %s matching ref %s: %v", game.ID, model.ID, err)
+	}
+
+	return p, snaps[0].Ref, true, nil
+}
+
+// GetPredictions returns a collection of predictions for a given game.
+func GetPredictions(ctx context.Context, client *fs.Client, game *fs.DocumentRef) ([]ModelPrediction, []*fs.DocumentRef, error) {
+	// TODO: this is identical to many other "get from collection" methods and should somehow
+	// be made into an interface.
+	refs, err := game.Collection("predictions").DocumentRefs(ctx).GetAll()
+	if err != nil {
+		return nil, nil, fmt.Errorf("error getting prediction document refs for game %s: %w", game.ID, err)
+	}
+	predictions := make([]ModelPrediction, len(refs))
+	for i, r := range refs {
+		ss, err := r.Get(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error getting prediction snapshot %s: %w", r.ID, err)
+		}
+		var p ModelPrediction
+		err = ss.DataTo(&p)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error getting prediction snapshot data %s: %w", r.ID, err)
+		}
+		predictions[i] = p
+	}
+	return predictions, refs, nil
+}
+
 // ModelTeamPoints represents a modeled number of points that a given team is expected to score against an average opponent.
 // Some models model the team's scoring potential directly rather than the spread of a given game. This is extremely useful
 // for predicting the spread of unscheduled or hypothetical games that other models do not attempt to predict.
