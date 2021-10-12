@@ -6,6 +6,7 @@ require (
 	cloud.google.com/go/firestore v1.5.0
 	cloud.google.com/go/storage v1.10.0
 	github.com/tealeg/xlsx v1.0.5
+	gonum.org/v1/gonum v0.9.3
 	google.golang.org/api v0.54.0
 )
 
@@ -17,6 +18,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.0.5 // indirect
 	github.com/jstemmer/go-junit-report v0.9.1 // indirect
 	go.opencensus.io v0.23.0 // indirect
+	golang.org/x/exp v0.0.0-20200224162631-6cc2880d07d6 // indirect
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 	golang.org/x/mod v0.4.2 // indirect
 	golang.org/x/net v0.0.0-20210503060351-7fd8e65b6420 // indirect

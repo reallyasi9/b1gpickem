@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 type SlateRowBuilder interface {
@@ -36,28 +37,13 @@ type Picks struct {
 	Picks map[int]*firestore.DocumentRef `firestore:"picks"`
 }
 
-// Pick is a pick on a game. See: Game, Slate, Week, and Picks for references.
+// Pick is a pick on a game. See: SlateGame, ModelPRediction, and Team for references.
 type Pick struct {
-	// Picker is a reference to the picker who made the picks.
-	Picker *firestore.DocumentRef `firestore:"picker"`
+	// SlateGame is a reference to the picked game in the slate.
+	SlateGame *firestore.DocumentRef `firestore:"game"`
 
-	// Season is a reference to the season document for these picks.
-	Season *firestore.DocumentRef `firestore:"season"`
-
-	// Week is a reference to the week of the picks.
-	Week *firestore.DocumentRef `firestore:"week"`
-
-	// Game is a reference to the picked game.
-	Game *firestore.DocumentRef `firestore:"game"`
-
-	// Slate is a reference to the slate containing the pick options.
-	Slate *firestore.DocumentRef `firestore:"slate"`
-
-	// NeutralDisagreement is whether or not the slate lied to us about the neutral site of the game.
-	NeutralDisagreement bool `firestore:"neutral_disagreement"`
-
-	// Swap is whether or not the slate lied to us about who are the home and road teams.
-	HomeAwaySwap bool `firestore:"swap"`
+	// ModelPrediction is a reference to the spread from the model used to make the pick
+	ModelPrediction *firestore.DocumentRef `firestore:"model_prediction"`
 
 	// PickedTeam is the Team the Picker picked, regardless of the model output. Can be nil if this pick is for a "superdog" game and the underdog was not picked.
 	PickedTeam *firestore.DocumentRef `firestore:"pick"`
@@ -67,25 +53,23 @@ type Pick struct {
 
 	// PredictedProbability is the probability the pick is correct (including possible noisy spread adjustments).
 	PredictedProbability float64 `firestore:"predicted_probability"`
+}
 
-	// ModeledGame is a reference to the spread from the model used to make the pick
-	ModeledGame *firestore.DocumentRef `firestore:"modeled_game"`
-
-	// Row is the row in the slate whence the pick originated.
-	Row int `firestore:"row"`
+// FillOut uses game and model performance information to fill out a pick
+func (p *Pick) FillOut(game Game, perf ModelPerformance, pred ModelPrediction, predRef *firestore.DocumentRef) {
+	dist := distuv.Normal{Mu: 0, Sigma: perf.StdDev}
+	p.ModelPrediction = predRef
+	p.PredictedSpread = pred.Spread - perf.Bias
+	p.PredictedProbability = dist.CDF(p.PredictedSpread)
+	p.PickedTeam = game.HomeTeam
+	if p.PredictedProbability < .5 {
+		p.PredictedProbability = 1. - p.PredictedProbability
+		p.PickedTeam = game.AwayTeam
+	}
 }
 
 // StreakPick is a pick for Beat the Streak (BTS).
 type StreakPick struct {
-	// Picker is a reference to the picker who made the picks.
-	Picker *firestore.DocumentRef `firestore:"picker"`
-
-	// Season is a reference to the season document for these picks.
-	Season *firestore.DocumentRef `firestore:"season"`
-
-	// Week is a reference to the week of the picks.
-	Week *firestore.DocumentRef `firestore:"week"`
-
 	// PickedTeams is what the user picked, regardless of the model output.
 	// Note that there could be multiple picks per week.
 	PickedTeams []*firestore.DocumentRef `firestore:"picks"`
@@ -105,7 +89,7 @@ func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 	// need to know the game to get the notes right
 	var gameDoc *firestore.DocumentSnapshot
 	var err error
-	if gameDoc, err = p.Game.Get(ctx); err != nil {
+	if gameDoc, err = p.SlateGame.Get(ctx); err != nil {
 		return nil, err
 	}
 	var game SlateGame
@@ -140,14 +124,10 @@ func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 	if math.Abs(p.PredictedSpread) >= 14 {
 		notes = append(notes, "Maybe this should have been a noisy spread game?")
 	}
-	// if p.NeutralDisagreement {
-	// 	if game.NeutralSite {
-	// 		notes = append(notes, "NOTE: This game is at a neutral site!")
-	// 	} else {
-	// 		notes = append(notes, "NOTE: This game is NOT taking place at a neutral site!")
-	// 	}
-	// }
-	if p.HomeAwaySwap {
+	if game.NeutralDisagreement {
+		notes = append(notes, "NOTE: This game might not be where you think it is.")
+	}
+	if game.HomeDisagreement {
 		notes = append(notes, "NOTE: The slate seems to be incorrect about which team is home and which is away!")
 	}
 	output[2] = strings.Join(notes, "\n")

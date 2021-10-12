@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 
 	fs "cloud.google.com/go/firestore"
 	"github.com/reallyasi9/b1gpickem/firestore"
@@ -157,71 +158,148 @@ const (
 	superdog
 )
 
-func pickEm(ctx context.Context, fsClient *fs.Client, sg firestore.SlateGame, mlu firestore.ModelRefsByName, perfs []firestore.ModelPerformance, choice string, gt gameType, fallback bool) (firestore.Pick, error) {
+func pickEm(ctx context.Context, fsClient *fs.Client, sg *fs.DocumentRef, perfs []firestore.ModelPerformance, modelChoice *fs.DocumentRef, gt gameType, fallback bool) (firestore.Pick, error) {
 	// TODO: fill out Pick from SlateGame
-	var p firestore.Pick
+	p := firestore.Pick{
+		SlateGame: sg,
+	}
 
-	predictions, _, err := firestore.GetPredictions(ctx, fsClient, sg.Game)
+	ss, err := sg.Get(ctx)
 	if err != nil {
-		return p, fmt.Errorf("unable to get predictions: %v", err)
+		return p, fmt.Errorf("unable to get slate game \"%s\": %v", sg.Path, err)
+	}
+	var sgame firestore.SlateGame
+	err = ss.DataTo(&sgame)
+	if err != nil {
+		return p, fmt.Errorf("unable to build SlateGame from \"%s\": %v", sg.Path, err)
+	}
+
+	predictions, predRefs, err := firestore.GetPredictions(ctx, fsClient, sgame.Game)
+	if err != nil {
+		return p, fmt.Errorf("unable to get predictions for slate game \"%d\": %v", sgame.Game.Path, err)
+	}
+
+	ss, err = sgame.Game.Get(ctx)
+	if err != nil {
+		return p, fmt.Errorf("unable to get game \"%s\": %v", sgame.Game.Path, err)
+	}
+	var game firestore.Game
+	err = ss.DataTo(&game)
+	if err != nil {
+		return p, fmt.Errorf("unable to build Game from \"%s\": %v", sgame.Game.Path, err)
 	}
 
 	// If a specific choice is made, try to get that first.
-	var model *fs.DocumentRef
-	if choice != "" {
-		var ok bool
-		model, ok = mlu[choice]
-		if !ok && !fallback {
-			return p, fmt.Errorf("model '%s' not found")
-		}
-		if !ok {
-			model, ok, err = getFallbackModel(ctx, fsClient, predictions, gt)
-			if err != nil {
-				// TODO: handle error
+	if modelChoice != nil {
+		// simple linear search will do
+		var pred firestore.ModelPrediction
+		var nilPred firestore.ModelPrediction
+		var i int
+		for i, pred = range predictions {
+			if pred.Model.Path == modelChoice.Path {
+				break
 			}
 		}
-		if !ok {
-			p, ok, err = getScoreModelPick(ctx, fsClient, sg.Game)
-			if err != nil {
-				// TODO: handle error
+		predRef := predRefs[i]
+		var perf firestore.ModelPerformance
+		var nilPerf firestore.ModelPerformance
+		for _, perf = range perfs {
+			if perf.Model.Path == modelChoice.Path {
+				break
 			}
-			if !ok {
-				// TODO: handle not found?
-			}
-			return p, nil
 		}
-	} else {
-		var ok bool
-		model, ok, err = getFallbackModel(ctx, fsClient, predictions, gt)
-		if err != nil {
-			// TODO: handle error
-		}
-		if !ok {
-			p, ok, err = getScoreModelPick(ctx, fsClient, sg.Game)
-			if err != nil {
-				// TODO: handle error
-			}
-			if !ok {
-				// TODO: handle not found?
-			}
+		// use the prediction to fill out the pick
+		if pred != nilPred && perf != nilPerf {
+			p.FillOut(game, perf, pred, predRef)
 			return p, nil
 		}
 	}
+	if !fallback {
+		return p, fmt.Errorf("no predictions for game \"%s\" and no fallback specified", sgame.Game.Path)
+	}
 
-	pred, _, ok, err := firestore.GetPredictionByModel(ctx, fsClient, sg.Game, model)
+	// fallback onto best
+	pred, predRef, perf, err := getFallbackPrediction(ctx, predictions, predRefs, perfs, gt)
 	if err != nil {
-		// TODO: handle error
+		return p, fmt.Errorf("unable to get fallback prediction: %v", err)
 	}
-	if !ok {
-		// TODO: handle not found?
-	}
-
-	p.PredictedSpread = pred.Spread
-	// TODO: get prob from spread and model performance
-	if pred.Spread < 0 {
-		// TODO: get teams from game?
-	}
+	p.FillOut(game, perf, pred, predRef)
 
 	return p, nil
+}
 
+func getFallbackPrediction(ctx context.Context, preds []firestore.ModelPrediction, predRefs []*fs.DocumentRef, ps []firestore.ModelPerformance, gt gameType) (bestPred firestore.ModelPrediction, predRef *fs.DocumentRef, bestPerf firestore.ModelPerformance, err error) {
+	if len(preds) == 0 {
+		err = fmt.Errorf("unable to get fallback prediction: no predictions for game")
+		return
+	}
+
+	switch gt {
+	case straightUp:
+		sort.Sort(sort.Reverse(byWins(ps)))
+	case noisySpread:
+		fallthrough
+	case superdog:
+		sort.Sort(byMSE(ps))
+	default:
+		err = fmt.Errorf("unable to get fallback prediction: unrecognized game type %v", gt)
+		return
+	}
+
+	// Look for the best in the predictions I have
+	predByModelID := make(map[string]firestore.ModelPrediction)
+	refByModelID := make(map[string]*fs.DocumentRef)
+	for i, pred := range preds {
+		predByModelID[pred.Model.ID] = pred
+		refByModelID[pred.Model.ID] = predRefs[i]
+	}
+
+	for _, perf := range ps {
+		var ok bool
+		if bestPred, ok = predByModelID[perf.Model.ID]; ok {
+			bestPerf = perf
+			predRef = refByModelID[perf.Model.ID]
+			break
+		}
+	}
+	var noPred firestore.ModelPrediction
+	if bestPred == noPred {
+		err = fmt.Errorf("unable to get fallback model: no predictions match")
+	}
+
+	return
+}
+
+type byWins []firestore.ModelPerformance
+
+// Len implements Sortable interface
+func (b byWins) Len() int {
+	return len(b)
+}
+
+// Less implements Sortable interface
+func (b byWins) Less(i, j int) bool {
+	return b[i].Wins < b[j].Wins
+}
+
+// Swap implements Sortable interface
+func (b byWins) Swap(i, j int) {
+	b[i], b[j] = b[j], b[i]
+}
+
+type byMSE []firestore.ModelPerformance
+
+// Len implements Sortable interface
+func (b byMSE) Len() int {
+	return len(b)
+}
+
+// Less implements Sortable interface
+func (b byMSE) Less(i, j int) bool {
+	return b[i].MSE < b[j].MSE
+}
+
+// Swap implements Sortable interface
+func (b byMSE) Swap(i, j int) {
+	b[i], b[j] = b[j], b[i]
 }
