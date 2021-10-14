@@ -113,7 +113,9 @@ func main() {
 	}
 	modelLookup := firestore.NewModelRefsBySystem(models, modelRefs)
 
-	for _, ss := range sgss {
+	picks := make([]firestore.Pick, len(sgss))
+	dogs := make([]dogPick, 0)
+	for i, ss := range sgss {
 		var sgame firestore.SlateGame
 		err = ss.DataTo(&sgame)
 		if err != nil {
@@ -148,8 +150,27 @@ func main() {
 		if err != nil {
 			log.Fatalf("Unable to pick Game \"%s\": %v", gamess.Ref.Path, err)
 		}
-		log.Print(pick)
+		picks[i] = pick
+		if gt == superdog {
+			dogs = append(dogs, dogPick{teamID: pick.PickedTeam.ID, points: sgame.Value, prob: pick.PredictedProbability})
+		}
 	}
+
+	// Pick dog by unpicking undogs. Huh.
+	sort.Sort(sort.Reverse(byValue(dogs)))
+	unpickedDogs := make(map[string]struct{})
+	for _, dog := range dogs[1:] {
+		unpickedDogs[dog.teamID] = struct{}{}
+	}
+	for i, p := range picks {
+		if _, ok := unpickedDogs[p.PickedTeam.ID]; ok {
+			p.PickedTeam = nil
+			picks[i] = p
+		}
+	}
+
+	// TODO: lookup streak pick
+	log.Print(picks)
 }
 
 type gameType int
@@ -310,5 +331,33 @@ func (b byMSE) Less(i, j int) bool {
 
 // Swap implements Sortable interface
 func (b byMSE) Swap(i, j int) {
+	b[i], b[j] = b[j], b[i]
+}
+
+type dogPick struct {
+	teamID string
+	points int
+	prob   float64
+}
+
+type byValue []dogPick
+
+// Len implements Sortable interface
+func (b byValue) Len() int {
+	return len(b)
+}
+
+// Less implements Sortable interface
+func (b byValue) Less(i, j int) bool {
+	vi := b[i].prob * (1. - float64(b[i].points))
+	vj := b[j].prob * (1. - float64(b[j].points))
+	if vi == vj {
+		return b[i].points < b[j].points
+	}
+	return vi < vj
+}
+
+// Swap implements Sortable interface
+func (b byValue) Swap(i, j int) {
 	b[i], b[j] = b[j], b[i]
 }
