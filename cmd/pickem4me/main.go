@@ -107,7 +107,6 @@ func main() {
 		log.Fatalf("Unable to get model performances: %v\nHave you run update-models?", err)
 	}
 
-	// TODO: performance by model short name... need to get short names from perf.Model
 	models, modelRefs, err := firestore.GetModels(ctx, fsClient)
 	if err != nil {
 		log.Fatalf("Unable to get model information: %v\nHave you run setup-model?", err)
@@ -131,21 +130,24 @@ func main() {
 			log.Fatalf("Unable to convert Game at path \"%s\": %v", gamess.Ref.Path, err)
 		}
 
-		var modelChoice string
+		var modelChoice *fs.DocumentRef
 		var gt gameType
 		switch {
 		case sgame.NoisySpread != 0:
-			modelChoice = nsSystem
+			modelChoice = modelLookup[nsSystem]
 			gt = noisySpread
 		case sgame.Superdog:
-			modelChoice = sdSystem
+			modelChoice = modelLookup[sdSystem]
 			gt = superdog
 		default:
-			modelChoice = suSystem
+			modelChoice = modelLookup[suSystem]
 			gt = straightUp
 		}
 
-		pick, err := pickEm(ctx, fsClient, sgame, modelLookup, perfs, modelChoice, gt, fallback)
+		pick, err := pickEm(ctx, fsClient, ss.Ref, perfs, modelChoice, gt, fallback)
+		if err != nil {
+			log.Fatalf("Unable to pick Game \"%s\": %v", gamess.Ref.Path, err)
+		}
 		log.Print(pick)
 	}
 }
@@ -158,7 +160,14 @@ const (
 	superdog
 )
 
-func pickEm(ctx context.Context, fsClient *fs.Client, sg *fs.DocumentRef, perfs []firestore.ModelPerformance, modelChoice *fs.DocumentRef, gt gameType, fallback bool) (firestore.Pick, error) {
+func pickEm(
+	ctx context.Context,
+	fsClient *fs.Client,
+	sg *fs.DocumentRef,
+	perfs []firestore.ModelPerformance,
+	modelChoice *fs.DocumentRef,
+	gt gameType,
+	fallback bool) (firestore.Pick, error) {
 	// TODO: fill out Pick from SlateGame
 	p := firestore.Pick{
 		SlateGame: sg,
@@ -176,7 +185,7 @@ func pickEm(ctx context.Context, fsClient *fs.Client, sg *fs.DocumentRef, perfs 
 
 	predictions, predRefs, err := firestore.GetPredictions(ctx, fsClient, sgame.Game)
 	if err != nil {
-		return p, fmt.Errorf("unable to get predictions for slate game \"%d\": %v", sgame.Game.Path, err)
+		return p, fmt.Errorf("unable to get predictions for slate game \"%s\": %v", sgame.Game.Path, err)
 	}
 
 	ss, err = sgame.Game.Get(ctx)

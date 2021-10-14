@@ -146,12 +146,17 @@ func GetMostRecentModelPerformances(ctx context.Context, fsClient *fs.Client, we
 		return nil, nil, err
 	}
 	if len(ss) == 0 {
-		return nil, nil, fmt.Errorf("GetMostRecentModelPerformances(): no performances found for week \"%s\"", week.Path)
+		return nil, nil, fmt.Errorf("failed to get model performance document: no performances found for week \"%s\"", week.Path)
+	}
+	pcoll := ss[0].Ref.Collection("performances")
+	snaps, err := pcoll.Documents(ctx).GetAll()
+	if err != nil {
+		return nil, nil, fmt.Errorf("faled to get model performances from \"%s\": %v", pcoll.Path, err)
 	}
 
-	perfs := make([]ModelPerformance, len(ss))
-	refs := make([]*fs.DocumentRef, len(ss))
-	for i, mpss := range ss {
+	perfs := make([]ModelPerformance, len(snaps))
+	refs := make([]*fs.DocumentRef, len(snaps))
+	for i, mpss := range snaps {
 		var mp ModelPerformance
 		err = mpss.DataTo(&mp)
 		if err != nil {
