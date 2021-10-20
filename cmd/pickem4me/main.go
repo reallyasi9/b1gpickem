@@ -9,7 +9,7 @@ import (
 	"sort"
 
 	fs "cloud.google.com/go/firestore"
-	"github.com/reallyasi9/b1gpickem/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
 // season holds the flag value of the season of the slate.

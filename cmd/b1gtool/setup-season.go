@@ -10,8 +10,8 @@ import (
 	"time"
 
 	fs "cloud.google.com/go/firestore"
-	"github.com/reallyasi9/b1gpickem/cfbdata"
-	"github.com/reallyasi9/b1gpickem/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/cfbdata"
+	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
 // seasonFlagSet is a flag.FlagSet for parsing the setup-season subcommand.

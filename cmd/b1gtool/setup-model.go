@@ -7,7 +7,7 @@ import (
 	"log"
 
 	fs "cloud.google.com/go/firestore"
-	"github.com/reallyasi9/b1gpickem/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
 // modelFlagSet is a flag.FlagSet for parsing the setup-model subcommand.

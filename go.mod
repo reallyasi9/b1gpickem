@@ -5,9 +5,13 @@ go 1.17
 require (
 	cloud.google.com/go/firestore v1.5.0
 	cloud.google.com/go/storage v1.10.0
+	firebase.google.com/go v3.13.0+incompatible
+	github.com/atgjack/prob v0.0.0-20161220081030-6cfd5d401186
+	github.com/segmentio/fasthash v1.0.3
 	github.com/tealeg/xlsx v1.0.5
 	gonum.org/v1/gonum v0.9.3
 	google.golang.org/api v0.54.0
+	gopkg.in/yaml.v2 v2.2.3
 )
 
 require (

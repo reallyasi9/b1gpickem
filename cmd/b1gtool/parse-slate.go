@@ -15,7 +15,7 @@ import (
 
 	fs "cloud.google.com/go/firestore"
 	"cloud.google.com/go/storage"
-	"github.com/reallyasi9/b1gpickem/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/firestore"
 	"github.com/tealeg/xlsx"
 )
 

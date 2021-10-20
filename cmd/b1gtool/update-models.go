@@ -16,7 +16,7 @@ import (
 	"time"
 
 	fs "cloud.google.com/go/firestore"
-	"github.com/reallyasi9/b1gpickem/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
 // The subcommand update-modes the performance to date of the various prediction models from https://www.thepredictiontracker.com/ncaaresults.php.

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	fs "cloud.google.com/go/firestore"
-	"github.com/reallyasi9/b1gpickem/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
 // pickerFlagSet is a flag.FlagSet for parsing the edit-pickers subcommand.

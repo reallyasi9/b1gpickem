@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	fs "cloud.google.com/go/firestore"
-	"github.com/reallyasi9/b1gpickem/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
 type Team struct {

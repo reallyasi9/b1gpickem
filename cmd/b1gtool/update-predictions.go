@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	fs "cloud.google.com/go/firestore"
-	"github.com/reallyasi9/b1gpickem/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
 // The subcommand update-predictions scrapes the individual model predictions for each game of the week from https://www.thepredictiontracker.com/ncaapredictions.csv.
