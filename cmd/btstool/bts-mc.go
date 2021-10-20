@@ -117,7 +117,6 @@ var resetItr int
 var seed int64
 var workers int
 var doAll bool
-var _DRY_RUN bool
 
 // btsMCUsage is the usage documentation for the bts-mc subcommand.
 func btsMCUsage() {
@@ -154,7 +153,6 @@ func init() {
 	btsMCFlagSet.Int64Var(&seed, "seed", -1, "Seed for RNG governing simulated annealing process. Negative values will use system clock to seed RNG.")
 	btsMCFlagSet.IntVar(&workers, "workers", 1, "Number of workers per simulated picker. Increases odds of finding the global maximum.")
 	btsMCFlagSet.BoolVar(&doAll, "all", false, "Ignore picker list and simulate all registered pickers still in the streak.")
-	btsMCFlagSet.BoolVar(&_DRY_RUN, "dryrun", false, "Rather than write the output to Firestore, just report what would have been written.")
 
 	Commands["bts-mc"] = btsMC
 	Usage["bts-mc"] = btsMCUsage
@@ -582,7 +580,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	// Print results
 	output := fs.Collection("streak_predictions")
 
-	if _DRY_RUN {
+	if DryRun {
 		log.Print("DRY RUN: Would write the following:")
 	}
 	for _, streak := range streakOptions {
@@ -591,7 +589,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		streak.Season = seasonDoc.Ref
 		streak.PredictionTracker = predictionDoc.Ref
 
-		if _DRY_RUN {
+		if DryRun {
 			log.Printf("%s: add %+v", output.Path, streak)
 			continue
 		}
