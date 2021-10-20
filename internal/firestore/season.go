@@ -18,6 +18,17 @@ type Season struct {
 
 	// Pickers is a map of LukeNames to references to Picker documents in Firestore. These are the pickers who are registered to play this season.
 	Pickers map[string]*firestore.DocumentRef `firestore:"pickers"`
+
+	// StreakTeams is an array of teams available for the BTS competition.
+	StreakTeams []*firestore.DocumentRef `firestore:"streak_teams"`
+
+	// StreakPickTypes is an array of pick types available for the BTS competition.
+	// The indices of the array represent the following:
+	//   0: the number of bye weeks
+	//   1: the number of single-team pick weeks
+	//   2: the number of double-down pick weeks
+	//   ...
+	StreakPickTypes []int `firestore:"streak_pick_types"`
 }
 
 // GetSeason gets the season defined by `year`. If `year<0`, the most recent season (by `start_time`) is returned.

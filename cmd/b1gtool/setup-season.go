@@ -107,9 +107,11 @@ func setupSeason() {
 	// set everything up to write to firestore
 	seasonRef := fsClient.Collection("seasons").Doc(strconv.Itoa(year))
 	season := firestore.Season{
-		Year:      year,
-		StartTime: weeks.FirstStartTime(),
-		Pickers:   make(map[string]*fs.DocumentRef),
+		Year:            year,
+		StartTime:       weeks.FirstStartTime(),
+		Pickers:         make(map[string]*fs.DocumentRef),
+		StreakTeams:     make([]*fs.DocumentRef, 0),
+		StreakPickTypes: make([]int, 0),
 	}
 	if err := weeks.LinkRefs(seasonRef.Collection("weeks")); err != nil {
 		panic(err)
