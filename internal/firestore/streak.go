@@ -1,6 +1,8 @@
 package firestore
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"cloud.google.com/go/firestore"
@@ -85,18 +87,6 @@ type StreakPrediction struct {
 	Weeks []StreakWeek `firestore:"weeks"`
 }
 
-// StreakTeamsRemainingWeek is a container for the remaining teams by picker.
-type StreakTeamsRemainingWeek struct {
-	// Season is a reference to the season of the pick.
-	Season *firestore.DocumentRef `firestore:"season"`
-
-	// Week is the week number of the pick (0 is just before the first week of the season).
-	Week int `firestore:"week"`
-
-	// Timestamp is the time the document was written to Firestore.
-	Timestamp time.Time `firestore:"timestamp,serverTimestamp"`
-}
-
 // StreakTeamsRemaining represents the remaining teams and pick types per picker
 type StreakTeamsRemaining struct {
 	// Picker is a reference to the picker.
@@ -111,4 +101,33 @@ type StreakTeamsRemaining struct {
 	// while the second (index 1) element represents the number of "single" picks remaining,
 	// and the third (index 2) represents the number of "double down" weeks remaining.
 	PickTypesRemaining []int `firestore:"pick_types_remaining"`
+}
+
+// GetStreakTeamsRemaining looks up the remaining streak teams for a given picker, week combination.
+func GetStreakTeamsRemaining(ctx context.Context, client *firestore.Client, week, picker *firestore.DocumentRef) (str StreakTeamsRemaining, ref *firestore.DocumentRef, err error) {
+	coll := week.Collection("streak_teams_remaining")
+	s, err := coll.Where("picker", "==", picker).Limit(1).Documents(ctx).GetAll()
+	if err != nil {
+		return
+	}
+	if len(s) != 1 {
+		err = fmt.Errorf("expected 1 streak teams remaining element for picker '%s' in week '%s', got %d", picker.ID, week.ID, len(s))
+		return
+	}
+	ref = s[0].Ref
+	err = s[0].DataTo(&str)
+	return
+}
+
+// StreakTeams represents a list of all the streak teams in a season and the types of picks allowed.
+type StreakTeams struct {
+	// Teams is a list of references to a season's streak teams.
+	Teams []*firestore.DocumentRef `firestore:"teams"`
+
+	// PickTypes is an array slice of number of pick types allowed.
+	// The index of the array represents the number of picks per week for that type.
+	// For instance, the first (index 0) element in the array represents the number of "bye" picks allowed,
+	// while the second (index 1) element represents the number of "single" picks allowed,
+	// and the third (index 2) represents the number of "double down" weeks allowed.
+	PickTypes []int `firestore:"pick_types"`
 }
