@@ -127,7 +127,7 @@ func pypMC() {
 
 	// Get most recent predictions
 	// TODO: Combine with bts-mc
-	iter = fs.Collection("prediction_tracker").OrderBy("timestamp", firestore.Desc).Limit(1).Documents(ctx)
+	iter = fs.Collection("prediction-tracker").OrderBy("timestamp", firestore.Desc).Limit(1).Documents(ctx)
 	predictionDoc, err := iter.Next()
 	if check(err) {
 		return
@@ -137,7 +137,7 @@ func pypMC() {
 
 	// Get Sagarin Rating performance
 	// TODO: Combine with bts-mc
-	iter = predictionDoc.Ref.Collection("model_performance").Where("system", "==", "Sagarin Points").Limit(1).Documents(ctx)
+	iter = predictionDoc.Ref.Collection("model-performance").Where("system", "==", "Sagarin Points").Limit(1).Documents(ctx)
 	sagDoc, err := iter.Next()
 	if check(err) {
 		return
