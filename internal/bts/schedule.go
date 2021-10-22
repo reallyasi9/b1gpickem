@@ -1,45 +1,86 @@
 package bts
 
 import (
+	"context"
 	"fmt"
-	"io/ioutil"
 	"strings"
 
-	yaml "gopkg.in/yaml.v2"
+	"cloud.google.com/go/firestore"
+
+	bpefs "github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
 // Schedule is a team's schedule for the year.
 type Schedule map[Team][]*Game
 
-// MakeSchedule parses a schedule YAML file.
-func MakeSchedule(fileName string) (*Schedule, error) {
-
-	schedYaml, err := ioutil.ReadFile(fileName)
+// MakeSchedule builds a schedule from the games in Firestore.
+// The schedule will only include games from the given `week` onward (inclusive), and only for the given `teams`.
+// If a `team` does not have a game in a given week, a BYE will be inserted.
+func MakeSchedule(ctx context.Context, client *firestore.Client, season *firestore.DocumentRef, week int, teams []*firestore.DocumentRef) (schedule Schedule, err error) {
+	sweeks, err := season.Collection("weeks").Documents(ctx).GetAll()
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	s := make(map[Team][]string)
-	err = yaml.Unmarshal(schedYaml, s)
-	if err != nil {
-		return nil, err
+	weeks := make(map[int]*firestore.DocumentRef)
+	lastWeek := -1
+	for _, sweek := range sweeks {
+		n, e := sweek.DataAt("number")
+		if e != nil {
+			err = e
+			return
+		}
+		nint := int(n.(int64))
+		if nint < week {
+			continue
+		}
+		if nint > lastWeek {
+			lastWeek = nint
+		}
+		weeks[nint] = sweek.Ref
 	}
 
-	// for k, v := range s {
-	// 	if len(v) != NGames {
-	// 		return nil, fmt.Errorf("schedule for team %s incorrect: expected %d, got %d", k, NGames, len(v))
-	// 	}
-	// }
-	sched := make(Schedule)
-	for team, locteams := range s {
-		sched[team] = make([]*Game, len(locteams))
-		for i, locteam := range locteams {
-			loc, team2 := splitLocTeam(locteam)
-			sched[team][i] = NewGame(team, team2, loc)
+	lastWeek++
+	schedule = make(Schedule)
+	teamMap := make(map[string]struct{})
+	for _, team := range teams {
+		allGames := make([]*Game, lastWeek-week)
+		// fill them with byes first, because some weeks are absent
+		for i := range allGames {
+			allGames[i] = NewGame(Team(team.ID), BYE, Neutral)
+		}
+		schedule[Team(team.ID)] = allGames
+		teamMap[team.ID] = struct{}{}
+	}
+
+	for iWeek, weekRef := range weeks {
+		i := iWeek - week
+		games, _, e := bpefs.GetGames(ctx, client, weekRef)
+		if e != nil {
+			err = e
+			return
+		}
+		for _, game := range games {
+			if _, ok := teamMap[game.HomeTeam.ID]; ok {
+				var loc RelativeLocation
+				if !game.NeutralSite {
+					loc = Home
+				}
+				g := NewGame(Team(game.HomeTeam.ID), Team(game.AwayTeam.ID), loc)
+				schedule[Team(game.HomeTeam.ID)][i] = g
+			}
+			if _, ok := teamMap[game.AwayTeam.ID]; ok {
+				var loc RelativeLocation
+				if !game.NeutralSite {
+					loc = Away
+				}
+				g := NewGame(Team(game.AwayTeam.ID), Team(game.HomeTeam.ID), loc)
+				schedule[Team(game.AwayTeam.ID)][i] = g
+			}
 		}
 	}
 
-	return &sched, nil
+	return
 }
 
 // Get a game for a team and week number.

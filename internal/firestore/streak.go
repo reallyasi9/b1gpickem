@@ -13,12 +13,6 @@ type StreakPredictions struct {
 	// Picker is a reference to who is making the pick.
 	Picker *firestore.DocumentRef `firestore:"picker"`
 
-	// Season is a reference to the season of the pick.
-	Season *firestore.DocumentRef `firestore:"season"`
-
-	// Week is the week number of the pick (0 is just before the first week of the season).
-	Week int `firestore:"week"`
-
 	// TeamsRemaining are the teams the picker has remaining to pick in the streak.
 	TeamsRemaining []*firestore.DocumentRef `firestore:"remaining"`
 
@@ -60,9 +54,6 @@ type StreakPredictions struct {
 
 // StreakWeek is a week's worth of streak picks.
 type StreakWeek struct {
-	// Week is the week number of the pick (0 is just before the first week of the season).
-	Week int `firestore:"week"`
-
 	// Pick is a reference to the team to pick this week that the model thinks gives the picker the best chance of beating the streak.
 	// Multiple picks are possible per week.
 	Pick []*firestore.DocumentRef `firestore:"pick"`
@@ -104,8 +95,27 @@ type StreakTeamsRemaining struct {
 }
 
 // GetStreakTeamsRemaining looks up the remaining streak teams for a given picker, week combination.
-func GetStreakTeamsRemaining(ctx context.Context, client *firestore.Client, week, picker *firestore.DocumentRef) (str StreakTeamsRemaining, ref *firestore.DocumentRef, err error) {
-	coll := week.Collection("streak_teams_remaining")
+// If week is nil, returns the remaining streak teams based off the season information.
+func GetStreakTeamsRemaining(ctx context.Context, client *firestore.Client, season, week, picker *firestore.DocumentRef) (str StreakTeamsRemaining, ref *firestore.DocumentRef, err error) {
+	if week == nil {
+		s, e := season.Get(ctx)
+		if e != nil {
+			err = e
+			return
+		}
+		var se Season
+		e = s.DataTo(&se)
+		if e != nil {
+			err = e
+			return
+		}
+		str.Picker = picker
+		str.PickTypesRemaining = se.StreakPickTypes
+		str.TeamsRemaining = se.StreakTeams
+		return
+	}
+
+	coll := week.Collection("streak-teams-remaining")
 	s, err := coll.Where("picker", "==", picker).Limit(1).Documents(ctx).GetAll()
 	if err != nil {
 		return
@@ -119,15 +129,49 @@ func GetStreakTeamsRemaining(ctx context.Context, client *firestore.Client, week
 	return
 }
 
-// StreakTeams represents a list of all the streak teams in a season and the types of picks allowed.
-type StreakTeams struct {
-	// Teams is a list of references to a season's streak teams.
-	Teams []*firestore.DocumentRef `firestore:"teams"`
+// GetRemainingStreaks looks up the remaining streaks for a given week, indexed by picker short name.
+// If week is nil, returns new StreakTeamsRemaining objects for all pickers based off the season information.
+func GetRemainingStreaks(ctx context.Context, client *firestore.Client, season, week *firestore.DocumentRef) (strs map[string]StreakTeamsRemaining, refs map[string]*firestore.DocumentRef, err error) {
+	if week == nil {
+		s, e := season.Get(ctx)
+		if e != nil {
+			err = e
+			return
+		}
+		var se Season
+		e = s.DataTo(&se)
+		if e != nil {
+			err = e
+			return
+		}
+		pickers := se.Pickers
+		strs = make(map[string]StreakTeamsRemaining)
+		refs = make(map[string]*firestore.DocumentRef)
+		for name, ref := range pickers {
+			strs[name] = StreakTeamsRemaining{
+				Picker:             ref,
+				PickTypesRemaining: se.StreakPickTypes,
+				TeamsRemaining:     se.StreakTeams,
+			}
+			refs[name] = nil // remember to create this later!
+		}
+		return
+	}
 
-	// PickTypes is an array slice of number of pick types allowed.
-	// The index of the array represents the number of picks per week for that type.
-	// For instance, the first (index 0) element in the array represents the number of "bye" picks allowed,
-	// while the second (index 1) element represents the number of "single" picks allowed,
-	// and the third (index 2) represents the number of "double down" weeks allowed.
-	PickTypes []int `firestore:"pick_types"`
+	ss, err := week.Collection("streak-teams-remaining").Documents(ctx).GetAll()
+	if err != nil {
+		return
+	}
+	strs = make(map[string]StreakTeamsRemaining)
+	refs = make(map[string]*firestore.DocumentRef)
+	for _, s := range ss {
+		var str StreakTeamsRemaining
+		err = s.DataTo(&str)
+		if err != nil {
+			return
+		}
+		strs[str.Picker.ID] = str
+		refs[str.Picker.ID] = s.Ref
+	}
+	return
 }

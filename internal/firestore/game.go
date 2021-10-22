@@ -127,3 +127,12 @@ func (g GameRefsByMatchup) LookupCorrectMatchup(m Matchup) (game *fs.DocumentRef
 
 	return
 }
+
+func (g GameRefsByMatchup) LookupTeam(t string) (*fs.DocumentRef, bool) {
+	for m, g := range g {
+		if m.Home == t || m.Away == t {
+			return g, true
+		}
+	}
+	return nil, false
+}

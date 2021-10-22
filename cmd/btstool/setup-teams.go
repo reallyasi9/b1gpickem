@@ -17,9 +17,9 @@ var teamsSeason int
 var teamsFlagSet *flag.FlagSet
 
 func init() {
-	teamsFlagSet = flag.NewFlagSet("pick", flag.ExitOnError)
+	teamsFlagSet = flag.NewFlagSet("setup-teams", flag.ExitOnError)
 	teamsFlagSet.SetOutput(flag.CommandLine.Output())
-	teamsFlagSet.Usage = pickUsage
+	teamsFlagSet.Usage = teamsUsage
 
 	teamsFlagSet.IntVar(&teamsSeason, "season", -1, "Season year. Negative values will calculate season based on today's date.")
 
@@ -68,15 +68,34 @@ func setupTeams() {
 		log.Fatalf("Failed to parse pick types: %v", err)
 	}
 
+	pickTypeWeeks := 0
+	pickTypeTeams := 0
+	for i, n := range pickTypes {
+		pickTypeWeeks += n
+		pickTypeTeams += i * n
+	}
+
+	if teamsFlagSet.NArg()-1 != pickTypeTeams {
+		log.Printf("WARNING: Total teams inferred by pick types (%d) not equal to number of teams in competition (%d)", pickTypeTeams, teamsFlagSet.NArg()-1)
+	}
+
 	fsclient, err := firestore.NewClient(ctx, ProjectID)
 	if err != nil {
 		log.Print(err)
 		log.Fatalf("Check that the project ID \"%s\" is correctly specified (either the -project flag or the GCP_PROJECT environment variable)", ProjectID)
 	}
 
-	season, seasonRef, err := bpefs.GetSeason(ctx, fsclient, streakerSeason)
+	season, seasonRef, err := bpefs.GetSeason(ctx, fsclient, teamsSeason)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	weeks, err := seasonRef.Collection("weeks").DocumentRefs(ctx).GetAll()
+	if err != nil {
+		log.Fatalf("Unable to check number of weeks in season %d: %v", teamsSeason, err)
+	}
+	if len(weeks) != pickTypeWeeks {
+		log.Printf("WARNING: Total weeks inferred by pick types (%d) not equal to number of weeks in season (%d)", pickTypeWeeks, len(weeks))
 	}
 
 	teams, teamRefs, err := bpefs.GetTeams(ctx, fsclient, seasonRef)
@@ -85,7 +104,7 @@ func setupTeams() {
 	}
 	teamRefsByOtherName := bpefs.NewTeamRefsByOtherName(teams, teamRefs)
 
-	streakTeams := make([]*firestore.DocumentRef, len(teamsFlagSet.Args()[1:]))
+	streakTeams := make([]*firestore.DocumentRef, teamsFlagSet.NArg()-1)
 	for i, name := range teamsFlagSet.Args()[1:] {
 		var teamRef *firestore.DocumentRef
 		var ok bool

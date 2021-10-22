@@ -13,8 +13,8 @@ import (
 	bpefs "github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
-var streakerWeek int
-var streakerSeason int
+var pickWeek int
+var pickSeason int
 
 // PastPicks is a mapping of pickers to the pick(s) they made in a given week.
 type PastPicks struct {
@@ -72,9 +72,8 @@ func init() {
 	pickFlagSet.SetOutput(flag.CommandLine.Output())
 	pickFlagSet.Usage = pickUsage
 
-	pickFlagSet.IntVar(&streakerSeason, "season", -1, "Season year. Negative values will calculate season based on today's date.")
-	pickFlagSet.IntVar(&streakerWeek, "week", -1, "Week number. Negative values will calculate week number based on today's date.")
-	// streakerFlagSet.Var(&PastPicks{&streakPicks}, "pick", "Make pick of a given team for a given picker in `picker:team` format. Flag can be specified multiple times.")
+	pickFlagSet.IntVar(&pickSeason, "season", -1, "Season year. Negative values will calculate season based on today's date.")
+	pickFlagSet.IntVar(&pickWeek, "week", -1, "Week number. Negative values will calculate week number based on today's date.")
 
 	Commands["pick"] = pick
 	Usage["pick"] = pickUsage
@@ -127,27 +126,31 @@ func pick() {
 		log.Fatalf("Check that the project ID \"%s\" is correctly specified (either the -project flag or the GCP_PROJECT environment variable)", ProjectID)
 	}
 
-	_, seasonRef, err := bpefs.GetSeason(ctx, fsclient, streakerSeason)
+	season, seasonRef, err := bpefs.GetSeason(ctx, fsclient, pickSeason)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	week, weekRef, err := bpefs.GetWeek(ctx, fsclient, seasonRef, streakerWeek)
+	week, weekRef, err := bpefs.GetWeek(ctx, fsclient, seasonRef, pickWeek)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// If making picks, eliminate the picks from next week's data
-	var nextWeekRef *firestore.DocumentRef
-	if len(streakPicks) > 0 {
-		_, nextWeekRef, err = bpefs.GetWeek(ctx, fsclient, seasonRef, week.Number+1)
-		if err != nil {
-			log.Fatal(err)
-		}
+	_, nextWeekRef, err := bpefs.GetWeek(ctx, fsclient, seasonRef, week.Number+1)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	for picker, picks := range streakPicks {
-		err = makeStreakPick(ctx, fsclient, seasonRef, weekRef, nextWeekRef, picker, picks)
+		// Make sure the picker is picking this season
+		var pickerRef *firestore.DocumentRef
+		var ok bool
+		if pickerRef, ok = season.Pickers[picker]; !ok {
+			log.Fatalf("Picker '%s' is not playing in season %d", picker, pickSeason)
+		}
+
+		err = makeStreakPick(ctx, fsclient, seasonRef, weekRef, nextWeekRef, pickerRef, picks)
 		if err != nil {
 			log.Fatalf("Unable to make streak pick of teams %v for picker '%s': %v", picks, picker, err)
 		}
@@ -158,21 +161,20 @@ func pick() {
 var teamRefsByOtherName bpefs.TeamRefsByName
 var teamsOnce sync.Once
 
-// Delete team with names in `teamNames` from the list of remaining teams for picker with short name `pickerName`.
-func makeStreakPick(ctx context.Context, client *firestore.Client, season, weekFrom, weekTo *firestore.DocumentRef, pickerName string, teamNames []string) error {
-	_, pickerRef, err := bpefs.GetPickerByLukeName(ctx, client, pickerName)
-	if err != nil {
-		return fmt.Errorf("unable to get picker with short name '%s': %w", pickerName, err)
-	}
+var gameRefsByMatchup bpefs.GameRefsByMatchup
+var gamesOnce sync.Once
 
-	str, _, err := bpefs.GetStreakTeamsRemaining(ctx, client, weekFrom, pickerRef)
+// Delete team with names in `teamNames` from the list of remaining teams for picker with short name `pickerName`.
+func makeStreakPick(ctx context.Context, client *firestore.Client, season, weekFrom, weekTo, picker *firestore.DocumentRef, teamNames []string) error {
+
+	str, _, err := bpefs.GetStreakTeamsRemaining(ctx, client, season, weekFrom, picker)
 	if err != nil {
-		return fmt.Errorf("unable to get streak teams remaining for picker with short name '%s', week '%s': %w", pickerName, weekFrom.ID, err)
+		return fmt.Errorf("unable to get streak teams remaining for picker '%s', week '%s': %w", picker.ID, weekFrom.ID, err)
 	}
 
 	nPicks := len(teamNames)
 	if len(str.PickTypesRemaining) < nPicks+1 || str.PickTypesRemaining[nPicks] <= 0 {
-		return fmt.Errorf("not enough picks of type %d remaining for picker with short name '%s'", nPicks, pickerName)
+		return fmt.Errorf("not enough picks of type %d remaining for picker '%s'", nPicks, picker.ID)
 	}
 	str.PickTypesRemaining[nPicks]--
 
@@ -183,11 +185,21 @@ func makeStreakPick(ctx context.Context, client *firestore.Client, season, weekF
 		}
 		teamRefsByOtherName = bpefs.NewTeamRefsByOtherName(teams, teamRefs)
 	})
+	gamesOnce.Do(func() {
+		games, gameRefs, err := bpefs.GetGames(ctx, client, weekFrom)
+		if err != nil {
+			panic(err)
+		}
+		gameRefsByMatchup = bpefs.NewGameRefsByMatchup(games, gameRefs)
+	})
 	for _, teamName := range teamNames {
 		var teamRef *firestore.DocumentRef
 		var ok bool
 		if teamRef, ok = teamRefsByOtherName[teamName]; !ok {
 			return fmt.Errorf("team with other name '%s' not found in season '%s'", teamName, season.ID)
+		}
+		if _, ok = gameRefsByMatchup.LookupTeam(teamRef.ID); !ok {
+			return fmt.Errorf("team with other name '%s' not playing in week '%s'", teamName, weekFrom.ID)
 		}
 		var found bool
 		for i, ref := range str.TeamsRemaining {
@@ -201,13 +213,13 @@ func makeStreakPick(ctx context.Context, client *firestore.Client, season, weekF
 			}
 		}
 		if !found {
-			return fmt.Errorf("unable to find team '%s' in remaining teams for picker '%s'", teamRef.ID, pickerName)
+			return fmt.Errorf("unable to find team '%s' in remaining teams for picker '%s'", teamRef.ID, picker.ID)
 		}
 	}
 
 	// Update remaining picks in next week's collection
-	col := weekTo.Collection("streak_teams_remaining")
-	newRef := col.Doc(pickerRef.ID)
+	col := weekTo.Collection("streak-teams-remaining")
+	newRef := col.Doc(picker.ID)
 	if DryRun {
 		log.Print("DRY RUN: would write the following to Firestore:")
 		log.Printf("%s -> %v\n", newRef.Path, str)
