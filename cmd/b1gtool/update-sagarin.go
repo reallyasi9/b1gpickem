@@ -253,7 +253,6 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 	}
 
 	seenTeams := make(map[string]struct{}) // stop if already seen.
-	var teamNotFoundErr error
 	for _, match := range teamMatches {
 		name := match[1]
 		if _, ok := seenTeams[name]; ok {
@@ -263,8 +262,8 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 
 		teamRef, exists := lookup[name]
 		if !exists {
-			teamNotFoundErr = fmt.Errorf("parseSagarinTable: last team not found: \"%s\"", name)
-			log.Printf("Team \"%s\" not found in teams", name)
+			log.Printf("Warning: team \"%s\" not found in teams. Make sure they only have FBS teams on their schedule!", name)
+			continue
 		}
 
 		for j := 0; j < 4; j++ {
@@ -281,9 +280,6 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 			}
 			ratings[m.ID] = append(ratings[m.ID], tr)
 		}
-	}
-	if teamNotFoundErr != nil {
-		return nil, teamNotFoundErr
 	}
 
 	for j := 0; j < 4; j++ {
