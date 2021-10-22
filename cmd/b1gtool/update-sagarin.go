@@ -146,14 +146,13 @@ func updateSagarin() {
 		return
 	}
 
-	now := time.Now()
 	weekRef := seasonRef.Collection("weeks").Doc(week)
-	pointsRef := weekRef.Collection("team_points").Doc(now.Format(time.RFC3339))
+	pointsRef := weekRef.Collection("team-points").Doc("sagarin")
 	// TODO: move to firestore?
 	type timestamped struct {
-		Timestamp time.Time `firestore:"timestamp"`
+		Timestamp time.Time `firestore:"timestamp,serverTimestamp"`
 	}
-	ts := timestamped{Timestamp: now}
+	ts := timestamped{}
 	if Force {
 		_, err = pointsRef.Set(ctx, &ts)
 	} else {
