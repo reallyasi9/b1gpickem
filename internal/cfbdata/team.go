@@ -148,6 +148,13 @@ func abbreviate(s string) string {
 
 // toFirestore does not link the Venue--that has to be done with an external lookup.
 func (t Team) toFirestore() firestore.Team {
+	// Fix some problematic schools first
+	if t.School == "South Dakota State" { // Should be SDST, not SDSU (San Diego State)
+		s := "SDST"
+		t.Abbreviation = &s
+		t.AltName2 = &s
+	}
+
 	otherNames := make([]string, 0)
 	otherNames = appendNonNilStrings(otherNames, t.AltName1, t.AltName2, t.AltName3, &t.School)
 	otherNames = replaceCommonAbbreviations(otherNames)
@@ -156,6 +163,7 @@ func (t Team) toFirestore() firestore.Team {
 	colors = appendNonNilStrings(colors, t.Color, t.AltColor)
 
 	abbr := coalesceString(t.Abbreviation, strings.ToUpper(t.School))
+
 	ft := firestore.Team{
 		Abbreviation: abbr,
 		ShortNames:   []string{abbr},

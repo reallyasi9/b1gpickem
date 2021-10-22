@@ -9,6 +9,9 @@ import (
 	firestore "cloud.google.com/go/firestore"
 )
 
+// WEEKS_COLLECTION is the path to the weeks collection in Firestore. It is a child of a season.
+const WEEKS_COLLECTION = "weeks"
+
 type Week struct {
 	// Number is the week number.
 	Number int `firestore:"number"`
@@ -30,7 +33,7 @@ func (w Week) String() string {
 // If `week<0`, the week is calculated based on today's date and the week's `first_game_start` field.
 func GetWeek(ctx context.Context, client *firestore.Client, season *firestore.DocumentRef, week int) (Week, *firestore.DocumentRef, error) {
 	var w Week
-	weekCol := season.Collection("weeks")
+	weekCol := season.Collection(WEEKS_COLLECTION)
 	var q firestore.Query
 	if week < 0 {
 		now := time.Now()

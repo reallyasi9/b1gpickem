@@ -9,6 +9,9 @@ import (
 	fs "cloud.google.com/go/firestore"
 )
 
+// GAMES_COLLECTION is the path to the games collection in Firestore.
+const GAMES_COLLECTION = "games"
+
 // Game is a ground truth game.
 type Game struct {
 	// HomeTeam is the nominal home team in the game.
@@ -57,9 +60,9 @@ func (g Game) String() string {
 	return sb.String()
 }
 
-// GetGames returns a collection of teams for a given season.
+// GetGames returns a collection of games for a given week.
 func GetGames(ctx context.Context, client *fs.Client, week *fs.DocumentRef) ([]Game, []*fs.DocumentRef, error) {
-	refs, err := week.Collection("games").DocumentRefs(ctx).GetAll()
+	refs, err := week.Collection(GAMES_COLLECTION).DocumentRefs(ctx).GetAll()
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting game document refs for week %s: %w", week.ID, err)
 	}
@@ -77,6 +80,30 @@ func GetGames(ctx context.Context, client *fs.Client, week *fs.DocumentRef) ([]G
 		games[i] = g
 	}
 	return games, refs, nil
+}
+
+// GetGamesByStartTime returns games that fall between two times (inclusive of lower bound, exclusive of upper).
+func GetGamesByStartTime(ctx context.Context, client *fs.Client, season *fs.DocumentRef, from, to time.Time) (games []Game, refs []*fs.DocumentRef, err error) {
+	weekRefs, err := season.Collection(WEEKS_COLLECTION).DocumentRefs(ctx).GetAll()
+	if err != nil {
+		return
+	}
+	games = make([]Game, 0)
+	refs = make([]*fs.DocumentRef, 0)
+	for _, ref := range weekRefs {
+		weekGames, weekGameRefs, e := GetGames(ctx, client, ref)
+		if e != nil {
+			err = e
+			return
+		}
+		for i, game := range weekGames {
+			if (game.StartTime.Equal(from) || game.StartTime.After(from)) && game.StartTime.Before(to) {
+				games = append(games, game)
+				refs = append(refs, weekGameRefs[i])
+			}
+		}
+	}
+	return
 }
 
 type Matchup struct {
