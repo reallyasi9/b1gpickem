@@ -23,7 +23,6 @@ func MakeSchedule(ctx context.Context, client *firestore.Client, season *firesto
 	}
 
 	weeks := make(map[int]*firestore.DocumentRef)
-	lastWeek := -1
 	for _, sweek := range sweeks {
 		n, e := sweek.DataAt("number")
 		if e != nil {
@@ -34,31 +33,27 @@ func MakeSchedule(ctx context.Context, client *firestore.Client, season *firesto
 		if nint < week {
 			continue
 		}
-		if nint > lastWeek {
-			lastWeek = nint
-		}
 		weeks[nint] = sweek.Ref
 	}
 
-	lastWeek++
 	schedule = make(Schedule)
 	teamMap := make(map[string]struct{})
 	for _, team := range teams {
-		allGames := make([]*Game, lastWeek-week)
-		// fill them with byes first, because some weeks are absent
-		for i := range allGames {
-			allGames[i] = NewGame(Team(team.ID), BYE, Neutral)
-		}
-		schedule[Team(team.ID)] = allGames
+		schedule[Team(team.ID)] = make([]*Game, 0)
 		teamMap[team.ID] = struct{}{}
 	}
 
-	for iWeek, weekRef := range weeks {
-		i := iWeek - week
+	for _, weekRef := range weeks {
 		games, _, e := bpefs.GetGames(ctx, client, weekRef)
 		if e != nil {
 			err = e
 			return
+		}
+		anyGames := false
+		// build a set of bye games for this week as default
+		allGames := make(map[string]*Game)
+		for t := range teamMap {
+			allGames[t] = NewGame(Team(t), BYE, Neutral)
 		}
 		for _, game := range games {
 			if _, ok := teamMap[game.HomeTeam.ID]; ok {
@@ -67,7 +62,8 @@ func MakeSchedule(ctx context.Context, client *firestore.Client, season *firesto
 					loc = Home
 				}
 				g := NewGame(Team(game.HomeTeam.ID), Team(game.AwayTeam.ID), loc)
-				schedule[Team(game.HomeTeam.ID)][i] = g
+				allGames[game.HomeTeam.ID] = g
+				anyGames = true
 			}
 			if _, ok := teamMap[game.AwayTeam.ID]; ok {
 				var loc RelativeLocation
@@ -75,7 +71,15 @@ func MakeSchedule(ctx context.Context, client *firestore.Client, season *firesto
 					loc = Away
 				}
 				g := NewGame(Team(game.AwayTeam.ID), Team(game.HomeTeam.ID), loc)
-				schedule[Team(game.AwayTeam.ID)][i] = g
+				allGames[game.AwayTeam.ID] = g
+				anyGames = true
+			}
+		}
+
+		if anyGames {
+			// At least one game: count it!
+			for t, g := range allGames {
+				schedule[Team(t)] = append(schedule[Team(t)], g)
 			}
 		}
 	}
@@ -119,25 +123,6 @@ func (s Schedule) TeamList() TeamList {
 		i++
 	}
 	return tl
-}
-
-func splitLocTeam(locTeam string) (RelativeLocation, Team) {
-	if locTeam == "BYE" || locTeam == "" {
-		return Neutral, BYE
-	}
-	// Note: this is relative to the schedule team, not the team given here.
-	switch locTeam[0] {
-	case '@':
-		return Away, Team(locTeam[1:])
-	case '>':
-		return Far, Team(locTeam[1:])
-	case '<':
-		return Near, Team(locTeam[1:])
-	case '!':
-		return Neutral, Team(locTeam[1:])
-	default:
-		return Home, Team(locTeam)
-	}
 }
 
 func (s Schedule) String() string {
