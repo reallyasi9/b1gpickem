@@ -69,7 +69,7 @@ func addStreakers() {
 		log.Fatal(err)
 	}
 
-	_, weekRef, err := bpefs.GetWeek(ctx, fsclient, seasonRef, 1)
+	_, weekRef, err := bpefs.GetFirstWeek(ctx, fsclient, seasonRef)
 	if err != nil {
 		log.Fatal(err)
 	}

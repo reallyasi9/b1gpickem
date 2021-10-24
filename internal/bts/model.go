@@ -57,9 +57,18 @@ func (m GaussianSpreadModel) MostLikelyOutcome(game *Game) (Team, float64, float
 
 func (m GaussianSpreadModel) spread(game *Game) float64 {
 	diff := m.ratings[string(game.Team(0))].Points - m.ratings[string(game.Team(1))].Points
-	if game.LocationRelativeToTeam(0) != 0 {
-		diff += m.ratings[string(game.Team(0))].HomeAdvantage
+	homeAdv := 0.
+	switch game.LocationRelativeToTeam(0) {
+	case Home:
+		homeAdv = m.ratings[string(game.Team(0))].HomeAdvantage
+	case Near:
+		homeAdv = m.ratings[string(game.Team(0))].HomeAdvantage / 2.
+	case Far:
+		homeAdv = -m.ratings[string(game.Team(1))].HomeAdvantage / .2
+	case Away:
+		homeAdv = -m.ratings[string(game.Team(1))].HomeAdvantage
 	}
+	diff += homeAdv
 	return diff
 }
 

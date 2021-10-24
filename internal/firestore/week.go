@@ -53,3 +53,21 @@ func GetWeek(ctx context.Context, client *firestore.Client, season *firestore.Do
 	}
 	return w, docs[0].Ref, nil
 }
+
+// GetFirstWeek returns the week object and document ref pointer with the earliest value of `first_game_start` in the season.
+func GetFirstWeek(ctx context.Context, client *firestore.Client, season *firestore.DocumentRef) (Week, *firestore.DocumentRef, error) {
+	var w Week
+	weekCol := season.Collection(WEEKS_COLLECTION)
+	q := weekCol.OrderBy("first_game_start", firestore.Asc).Limit(1)
+	docs, err := q.Documents(ctx).GetAll()
+	if err != nil {
+		return w, nil, err
+	}
+	if len(docs) == 0 {
+		return w, nil, fmt.Errorf("no weeks defined for season %s", season.ID)
+	}
+	if err = docs[0].DataTo(&w); err != nil {
+		return w, nil, err
+	}
+	return w, docs[0].Ref, nil
+}
