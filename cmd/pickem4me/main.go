@@ -82,7 +82,7 @@ func main() {
 		log.Fatalf("Unable to determine season from \"%d\": %v", season, err)
 	}
 
-	_, weekRef, err := firestore.GetWeek(ctx, fsClient, seasonRef, week)
+	_, weekRef, err := firestore.GetWeek(ctx, seasonRef, week)
 	if err != nil {
 		log.Fatalf("Unable to determine week from \"%d\": %v", week, err)
 	}
@@ -170,7 +170,43 @@ func main() {
 	}
 
 	// TODO: lookup streak pick
+	var sp *firestore.StreakPick
+	if picker != "" {
+		_, pkRef, err := firestore.GetPickerByLukeName(ctx, fsClient, picker)
+		if err != nil {
+			log.Fatalf("Unable to lookup picker '%s': %v", picker, err)
+		}
+		s, spRef, err := firestore.GetStreakPredictions(ctx, weekRef, pkRef)
+		if err != nil {
+			log.Fatalf("Unable to lookup streak prediction for picker '%s': %v", picker, err)
+		}
+		sp = &firestore.StreakPick{
+			PickedTeams:          s.BestPick,
+			StreakPredictions:    spRef,
+			PredictedSpread:      s.Spread,
+			PredictedProbability: s.Probability,
+		}
+	}
+
 	log.Print(picks)
+	for i, pick := range picks {
+		row, err := pick.BuildSlateRow(ctx)
+		if err != nil {
+			log.Fatalf("Unable to build slate row for pick: %v", err)
+		}
+		log.Printf("Pick %d: %v", i, row)
+	}
+	if sp != nil {
+		row, err := sp.BuildSlateRow(ctx)
+		if err != nil {
+			log.Fatalf("Unable to build slate row for streak pick: %v", err)
+		}
+		log.Printf("Streak Pick: %v", row)
+	}
+
+	// TODO: write to Firestore
+	// TODO: output Excel file for submission
+	// TODO: write Excel file to Store?
 }
 
 type gameType int

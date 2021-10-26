@@ -129,11 +129,9 @@ func (mp ModelPerformance) String() string {
 	sb.WriteRune('\n')
 	sb.WriteString(treeInt("LossesATS", 0, false, mp.LossesATS))
 	sb.WriteRune('\n')
-	sb.WriteString(treeInt("Wins", 0, false, mp.Wins))
-	sb.WriteRune('\n')
 	sb.WriteString(treeFloat64("StdDev", 0, false, mp.StdDev))
 	sb.WriteRune('\n')
-	sb.WriteString(treeRef("Model", 0, false, mp.Model))
+	sb.WriteString(treeRef("Model", 0, true, mp.Model))
 	return sb.String()
 }
 

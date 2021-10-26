@@ -95,19 +95,19 @@ func parseSlate() {
 		log.Fatalf("Unable to get season: %v", err)
 	}
 
-	_, weekRef, err := firestore.GetWeek(ctx, fsClient, seasonRef, slateWeek)
+	_, weekRef, err := firestore.GetWeek(ctx, seasonRef, slateWeek)
 	if err != nil {
 		log.Fatalf("Unable to get week: %v", err)
 	}
 
-	games, gameRefs, err := firestore.GetGames(ctx, fsClient, weekRef)
+	games, gameRefs, err := firestore.GetGames(ctx, weekRef)
 	if err != nil {
 		log.Fatalf("Unable to get games: %v", err)
 	}
 
 	gl := firestore.NewGameRefsByMatchup(games, gameRefs)
 
-	teams, teamRefs, err := firestore.GetTeams(ctx, fsClient, seasonRef)
+	teams, teamRefs, err := firestore.GetTeams(ctx, seasonRef)
 	if err != nil {
 		log.Fatalf("Unable to get teams: %v", err)
 	}

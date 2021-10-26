@@ -8,6 +8,9 @@ import (
 	"cloud.google.com/go/firestore"
 )
 
+const STEAK_PREDICTIONS_COLLECTION = "streak-predictions"
+const STREAK_TEAMS_REMAINING_COLLECTION = "streak-teams-remaining"
+
 // StreakPredictions records the best predicted streak and the possible streaks for a given picker.
 type StreakPredictions struct {
 	// Picker is a reference to who is making the pick.
@@ -23,11 +26,8 @@ type StreakPredictions struct {
 	// and the third (index 2) represents the number of "double down" weeks remaining.
 	PickTypesRemaining []int `firestore:"pick_types_remaining"`
 
-	// Schedule is a reference to the schedule of games used to make these predictions.
-	Schedule *firestore.DocumentRef `firestore:"schedule"`
-
-	// Sagarin is a reference to the Sagarin prediction model used to make these predictions.
-	Sagarin *firestore.DocumentRef `firestore:"sagarin"`
+	// Model is a reference to the team points prediction model used to make these predictions.
+	Model *firestore.DocumentRef `firestore:"model"`
 
 	// PredictionTracker is a reference to the TPT data used to evaluate the performance of the Sagarin model used to make these predictions.
 	PredictionTracker *firestore.DocumentRef `firestore:"prediction_tracker"`
@@ -56,6 +56,7 @@ type StreakPredictions struct {
 type StreakWeek struct {
 	// Pick is a reference to the team to pick this week that the model thinks gives the picker the best chance of beating the streak.
 	// Multiple picks are possible per week.
+	// An empty array represents a bye pick.
 	Pick []*firestore.DocumentRef `firestore:"pick"`
 
 	// Probabilities are the probabilities of each team in `Pick` winning this week.
@@ -96,7 +97,7 @@ type StreakTeamsRemaining struct {
 
 // GetStreakTeamsRemaining looks up the remaining streak teams for a given picker, week combination.
 // If week is nil, returns the remaining streak teams based off the season information.
-func GetStreakTeamsRemaining(ctx context.Context, client *firestore.Client, season, week, picker *firestore.DocumentRef) (str StreakTeamsRemaining, ref *firestore.DocumentRef, err error) {
+func GetStreakTeamsRemaining(ctx context.Context, season, week, picker *firestore.DocumentRef) (str StreakTeamsRemaining, ref *firestore.DocumentRef, err error) {
 	if week == nil {
 		s, e := season.Get(ctx)
 		if e != nil {
@@ -115,7 +116,7 @@ func GetStreakTeamsRemaining(ctx context.Context, client *firestore.Client, seas
 		return
 	}
 
-	coll := week.Collection("streak-teams-remaining")
+	coll := week.Collection(STREAK_TEAMS_REMAINING_COLLECTION)
 	s, err := coll.Where("picker", "==", picker).Limit(1).Documents(ctx).GetAll()
 	if err != nil {
 		return
@@ -131,7 +132,7 @@ func GetStreakTeamsRemaining(ctx context.Context, client *firestore.Client, seas
 
 // GetRemainingStreaks looks up the remaining streaks for a given week, indexed by picker short name.
 // If week is nil, returns new StreakTeamsRemaining objects for all pickers based off the season information.
-func GetRemainingStreaks(ctx context.Context, client *firestore.Client, season, week *firestore.DocumentRef) (strs map[string]StreakTeamsRemaining, refs map[string]*firestore.DocumentRef, err error) {
+func GetRemainingStreaks(ctx context.Context, season, week *firestore.DocumentRef) (strs map[string]StreakTeamsRemaining, refs map[string]*firestore.DocumentRef, err error) {
 	if week == nil {
 		s, e := season.Get(ctx)
 		if e != nil {
@@ -158,7 +159,7 @@ func GetRemainingStreaks(ctx context.Context, client *firestore.Client, season, 
 		return
 	}
 
-	ss, err := week.Collection("streak-teams-remaining").Documents(ctx).GetAll()
+	ss, err := week.Collection(STREAK_TEAMS_REMAINING_COLLECTION).Documents(ctx).GetAll()
 	if err != nil {
 		return
 	}
@@ -174,4 +175,18 @@ func GetRemainingStreaks(ctx context.Context, client *firestore.Client, season, 
 		refs[str.Picker.ID] = s.Ref
 	}
 	return
+}
+
+// GetStreakPredictions gets a StreakPredictions for a given picker. Returns an error if the picker does not have a streak prediction for the given week.
+func GetStreakPredictions(ctx context.Context, week, picker *firestore.DocumentRef) (StreakPredictions, *firestore.DocumentRef, error) {
+	var sp StreakPredictions
+	sps, err := week.Collection(STEAK_PREDICTIONS_COLLECTION).Where("picker", "==", picker).Documents(ctx).GetAll()
+	if err != nil {
+		return sp, nil, err
+	}
+	if len(sps) != 1 {
+		return sp, nil, fmt.Errorf("expected 1 document in %s for picker %s, got %d", STEAK_PREDICTIONS_COLLECTION, picker.Path, len(sps))
+	}
+	err = sps[0].DataTo(&sp)
+	return sp, sps[0].Ref, err
 }

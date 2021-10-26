@@ -117,7 +117,7 @@ func btsMC() {
 	log.Printf("season discovered: %s", seasonRef.ID)
 
 	// Get week
-	_, weekRef, err := bpefs.GetWeek(ctx, fs, seasonRef, weekFlag)
+	_, weekRef, err := bpefs.GetWeek(ctx, seasonRef, weekFlag)
 	if err != nil {
 		log.Fatalf("Unable to get week: %v", err)
 	}
@@ -146,7 +146,7 @@ func btsMC() {
 	log.Printf("latest sagarin ratings discovered: %v", sagarinRatings)
 
 	// Get the streakers for this week
-	pickerMap, _, err := bpefs.GetRemainingStreaks(ctx, fs, seasonRef, weekRef)
+	pickerMap, _, err := bpefs.GetRemainingStreaks(ctx, seasonRef, weekRef)
 	if err != nil {
 		log.Fatalf("Unable to get remaining streaks: %v", err)
 	}
@@ -252,13 +252,13 @@ func btsMC() {
 	streakOptions := collectByPlayer(bestStreaks, players, predictions, &schedule, seasonRef, weekRef, duplicates)
 
 	// Print results
-	output := weekRef.Collection("streak-predictions")
+	output := weekRef.Collection(bpefs.STEAK_PREDICTIONS_COLLECTION)
 
 	if DryRun {
 		log.Print("DRY RUN: Would write the following:")
 	}
 	for _, streak := range streakOptions {
-		streak.Sagarin = sagPointsRef
+		streak.Model = sagPointsRef
 		streak.PredictionTracker = sagPerfRef
 
 		if DryRun {
@@ -462,9 +462,11 @@ func collectByPlayer(sms <-chan streakMap, players bts.PlayerMap, predictions *b
 					spread := predictions.GetSpread(team, iweek)
 					pickedSpreads = append(pickedSpreads, spread)
 
-					// opponent := schedule.Get(team, iweek).Team(1)
-					// Cheat because I have the ID
-					teamRef := seasonRef.Collection("teams").Doc(string(team))
+					if team == bts.BYE || team == bts.NONE {
+						continue
+					}
+					// Cheat because I have the ID now
+					teamRef := seasonRef.Collection(bpefs.TEAMS_COLLECTION).Doc(string(team))
 					pickedTeams = append(pickedTeams, teamRef)
 				}
 

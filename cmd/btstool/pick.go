@@ -131,13 +131,13 @@ func pick() {
 		log.Fatal(err)
 	}
 
-	week, weekRef, err := bpefs.GetWeek(ctx, fsclient, seasonRef, pickWeek)
+	week, weekRef, err := bpefs.GetWeek(ctx, seasonRef, pickWeek)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// If making picks, eliminate the picks from next week's data
-	_, nextWeekRef, err := bpefs.GetWeek(ctx, fsclient, seasonRef, week.Number+1)
+	_, nextWeekRef, err := bpefs.GetWeek(ctx, seasonRef, week.Number+1)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -167,7 +167,7 @@ var gamesOnce sync.Once
 // Delete team with names in `teamNames` from the list of remaining teams for picker with short name `pickerName`.
 func makeStreakPick(ctx context.Context, client *firestore.Client, season, weekFrom, weekTo, picker *firestore.DocumentRef, teamNames []string) error {
 
-	str, _, err := bpefs.GetStreakTeamsRemaining(ctx, client, season, weekFrom, picker)
+	str, _, err := bpefs.GetStreakTeamsRemaining(ctx, season, weekFrom, picker)
 	if err != nil {
 		return fmt.Errorf("unable to get streak teams remaining for picker '%s', week '%s': %w", picker.ID, weekFrom.ID, err)
 	}
@@ -179,14 +179,14 @@ func makeStreakPick(ctx context.Context, client *firestore.Client, season, weekF
 	str.PickTypesRemaining[nPicks]--
 
 	teamsOnce.Do(func() {
-		teams, teamRefs, err := bpefs.GetTeams(ctx, client, season)
+		teams, teamRefs, err := bpefs.GetTeams(ctx, season)
 		if err != nil {
 			panic(err)
 		}
 		teamRefsByOtherName = bpefs.NewTeamRefsByOtherName(teams, teamRefs)
 	})
 	gamesOnce.Do(func() {
-		games, gameRefs, err := bpefs.GetGames(ctx, client, weekFrom)
+		games, gameRefs, err := bpefs.GetGames(ctx, weekFrom)
 		if err != nil {
 			panic(err)
 		}

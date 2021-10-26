@@ -69,7 +69,7 @@ func addStreakers() {
 		log.Fatal(err)
 	}
 
-	_, weekRef, err := bpefs.GetFirstWeek(ctx, fsclient, seasonRef)
+	_, weekRef, err := bpefs.GetFirstWeek(ctx, seasonRef)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func addStreakers() {
 			log.Fatalf("Picker '%s' not playing in season %d", name, season.Year)
 		}
 
-		str, _, err := bpefs.GetStreakTeamsRemaining(ctx, fsclient, seasonRef, nil, pickerRef)
+		str, _, err := bpefs.GetStreakTeamsRemaining(ctx, seasonRef, nil, pickerRef)
 		if err != nil {
 			log.Fatalf("Cannot get streak teams remaining: %v", err)
 		}

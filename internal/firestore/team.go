@@ -9,6 +9,8 @@ import (
 	"google.golang.org/api/iterator"
 )
 
+const TEAMS_COLLECTION = "teams"
+
 // Team represents an NCAA football team.
 type Team struct {
 	// Abbreviation is a short, capitalized abbreviation of the team's name.
@@ -77,8 +79,8 @@ func (t Team) String() string {
 }
 
 // GetTeams returns a collection of teams for a given season.
-func GetTeams(ctx context.Context, client *firestore.Client, season *firestore.DocumentRef) ([]Team, []*firestore.DocumentRef, error) {
-	iter := season.Collection("teams").Documents(ctx)
+func GetTeams(ctx context.Context, season *firestore.DocumentRef) ([]Team, []*firestore.DocumentRef, error) {
+	iter := season.Collection(TEAMS_COLLECTION).Documents(ctx)
 	teams := make([]Team, 0)
 	refs := make([]*firestore.DocumentRef, 0)
 	for {

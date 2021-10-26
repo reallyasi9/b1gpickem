@@ -37,7 +37,7 @@ type Picks struct {
 	Picks map[int]*firestore.DocumentRef `firestore:"picks"`
 }
 
-// Pick is a pick on a game. See: SlateGame, ModelPRediction, and Team for references.
+// Pick is a pick on a game. See: SlateGame, ModelPrediction, and Team for references.
 type Pick struct {
 	// SlateGame is a reference to the picked game in the slate.
 	SlateGame *firestore.DocumentRef `firestore:"game"`
@@ -72,7 +72,11 @@ func (p *Pick) FillOut(game Game, perf ModelPerformance, pred ModelPrediction, p
 type StreakPick struct {
 	// PickedTeams is what the user picked, regardless of the model output.
 	// Note that there could be multiple picks per week.
+	// An empty array represents a bye pick.
 	PickedTeams []*firestore.DocumentRef `firestore:"picks"`
+
+	// StreakPredictions is a reference to the full streak predictions document used to make the pick.
+	StreakPredictions *firestore.DocumentRef `firestore:"streak_predictions"`
 
 	// PredictedSpread is the spread of the remaining games in the optimal streak as predicted by the selected model.
 	PredictedSpread float64 `firestore:"predicted_spread"`

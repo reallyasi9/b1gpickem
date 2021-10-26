@@ -110,7 +110,7 @@ func updateSagarin() {
 	}
 
 	seasonRef := fsClient.Collection("seasons").Doc(year)
-	teams, refs, err := firestore.GetTeams(ctx, fsClient, seasonRef)
+	teams, refs, err := firestore.GetTeams(ctx, seasonRef)
 	if err != nil {
 		log.Fatalf("Failed to get teams: %v", err)
 	}

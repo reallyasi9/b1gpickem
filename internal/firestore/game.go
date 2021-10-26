@@ -61,7 +61,7 @@ func (g Game) String() string {
 }
 
 // GetGames returns a collection of games for a given week.
-func GetGames(ctx context.Context, client *fs.Client, week *fs.DocumentRef) ([]Game, []*fs.DocumentRef, error) {
+func GetGames(ctx context.Context, week *fs.DocumentRef) ([]Game, []*fs.DocumentRef, error) {
 	refs, err := week.Collection(GAMES_COLLECTION).DocumentRefs(ctx).GetAll()
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting game document refs for week %s: %w", week.ID, err)
@@ -83,7 +83,7 @@ func GetGames(ctx context.Context, client *fs.Client, week *fs.DocumentRef) ([]G
 }
 
 // GetGamesByStartTime returns games that fall between two times (inclusive of lower bound, exclusive of upper).
-func GetGamesByStartTime(ctx context.Context, client *fs.Client, season *fs.DocumentRef, from, to time.Time) (games []Game, refs []*fs.DocumentRef, err error) {
+func GetGamesByStartTime(ctx context.Context, season *fs.DocumentRef, from, to time.Time) (games []Game, refs []*fs.DocumentRef, err error) {
 	weekRefs, err := season.Collection(WEEKS_COLLECTION).DocumentRefs(ctx).GetAll()
 	if err != nil {
 		return
@@ -91,7 +91,7 @@ func GetGamesByStartTime(ctx context.Context, client *fs.Client, season *fs.Docu
 	games = make([]Game, 0)
 	refs = make([]*fs.DocumentRef, 0)
 	for _, ref := range weekRefs {
-		weekGames, weekGameRefs, e := GetGames(ctx, client, ref)
+		weekGames, weekGameRefs, e := GetGames(ctx, ref)
 		if e != nil {
 			err = e
 			return

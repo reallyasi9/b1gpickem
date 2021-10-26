@@ -17,23 +17,9 @@ type Schedule map[Team][]*Game
 // The schedule will only include games from the given `week` onward (inclusive), and only for the given `teams`.
 // If a `team` does not have a game in a given week, a BYE will be inserted.
 func MakeSchedule(ctx context.Context, client *firestore.Client, season *firestore.DocumentRef, week int, teams []*firestore.DocumentRef) (schedule Schedule, err error) {
-	sweeks, err := season.Collection("weeks").Documents(ctx).GetAll()
+	weeks, err := season.Collection(bpefs.WEEKS_COLLECTION).Where("number", ">=", week).OrderBy("number", firestore.Asc).Documents(ctx).GetAll()
 	if err != nil {
 		return
-	}
-
-	weeks := make(map[int]*firestore.DocumentRef)
-	for _, sweek := range sweeks {
-		n, e := sweek.DataAt("number")
-		if e != nil {
-			err = e
-			return
-		}
-		nint := int(n.(int64))
-		if nint < week {
-			continue
-		}
-		weeks[nint] = sweek.Ref
 	}
 
 	schedule = make(Schedule)
@@ -43,8 +29,9 @@ func MakeSchedule(ctx context.Context, client *firestore.Client, season *firesto
 		teamMap[team.ID] = struct{}{}
 	}
 
-	for _, weekRef := range weeks {
-		games, _, e := bpefs.GetGames(ctx, client, weekRef)
+	for _, weekSnap := range weeks {
+		// Search through games in each week for a matching team.
+		games, _, e := bpefs.GetGames(ctx, weekSnap.Ref)
 		if e != nil {
 			err = e
 			return

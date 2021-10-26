@@ -98,7 +98,7 @@ func setupTeams() {
 		log.Printf("WARNING: Total weeks inferred by pick types (%d) not equal to number of weeks in season (%d)", pickTypeWeeks, len(weeks))
 	}
 
-	teams, teamRefs, err := bpefs.GetTeams(ctx, fsclient, seasonRef)
+	teams, teamRefs, err := bpefs.GetTeams(ctx, seasonRef)
 	if err != nil {
 		panic(err)
 	}

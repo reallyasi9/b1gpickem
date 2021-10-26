@@ -98,13 +98,13 @@ func splitWeek() {
 		log.Fatalf("Unable to get season: %v", err)
 	}
 
-	games, gameRefs, err := bpefs.GetGamesByStartTime(ctx, fsclient, seasonRef, startTime, endTime)
+	games, gameRefs, err := bpefs.GetGamesByStartTime(ctx, seasonRef, startTime, endTime)
 	if err != nil {
 		log.Fatalf("Unable to get games: %v", err)
 	}
 	log.Printf("Loaded %d games", len(games))
 
-	week, weekRef, err := bpefs.GetWeek(ctx, fsclient, seasonRef, newWeek)
+	week, weekRef, err := bpefs.GetWeek(ctx, seasonRef, newWeek)
 	if err != nil {
 		// make a new week and use that
 		week.Number = newWeek
@@ -188,7 +188,7 @@ func splitWeek() {
 
 func refreshFirstGameStart(ctx context.Context, fsclient *fs.Client, weekRef *fs.DocumentRef) (time.Time, error) {
 	var earliest time.Time
-	games, _, err := bpefs.GetGames(ctx, fsclient, weekRef)
+	games, _, err := bpefs.GetGames(ctx, weekRef)
 	if err != nil {
 		return earliest, err
 	}

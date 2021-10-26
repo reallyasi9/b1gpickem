@@ -85,7 +85,7 @@ func updatePredictions() {
 	}
 
 	seasonRef := fsClient.Collection("seasons").Doc(year)
-	teams, refs, err := firestore.GetTeams(ctx, fsClient, seasonRef)
+	teams, refs, err := firestore.GetTeams(ctx, seasonRef)
 	if err != nil {
 		log.Fatalf("Failed to get teams: %v", err)
 	}
@@ -97,7 +97,7 @@ func updatePredictions() {
 	}
 
 	weekRef := seasonRef.Collection("weeks").Doc(week)
-	games, grefs, err := firestore.GetGames(ctx, fsClient, weekRef)
+	games, grefs, err := firestore.GetGames(ctx, weekRef)
 	if err != nil {
 		log.Fatalf("Failed to get games: %v", err)
 	}

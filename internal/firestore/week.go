@@ -31,7 +31,7 @@ func (w Week) String() string {
 
 // GetWeek returns the week object and document ref pointer matching the given season document ref and week number.
 // If `week<0`, the week is calculated based on today's date and the week's `first_game_start` field.
-func GetWeek(ctx context.Context, client *firestore.Client, season *firestore.DocumentRef, week int) (Week, *firestore.DocumentRef, error) {
+func GetWeek(ctx context.Context, season *firestore.DocumentRef, week int) (Week, *firestore.DocumentRef, error) {
 	var w Week
 	weekCol := season.Collection(WEEKS_COLLECTION)
 	var q firestore.Query
@@ -55,7 +55,7 @@ func GetWeek(ctx context.Context, client *firestore.Client, season *firestore.Do
 }
 
 // GetFirstWeek returns the week object and document ref pointer with the earliest value of `first_game_start` in the season.
-func GetFirstWeek(ctx context.Context, client *firestore.Client, season *firestore.DocumentRef) (Week, *firestore.DocumentRef, error) {
+func GetFirstWeek(ctx context.Context, season *firestore.DocumentRef) (Week, *firestore.DocumentRef, error) {
 	var w Week
 	weekCol := season.Collection(WEEKS_COLLECTION)
 	q := weekCol.OrderBy("first_game_start", firestore.Asc).Limit(1)
