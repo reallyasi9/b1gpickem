@@ -81,13 +81,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to determine season from \"%d\": %v", season, err)
 	}
+	log.Printf("Using season %s", seasonRef.ID)
 
 	_, weekRef, err := firestore.GetWeek(ctx, seasonRef, week)
 	if err != nil {
 		log.Fatalf("Unable to determine week from \"%d\": %v", week, err)
 	}
+	log.Printf("Using week %s", weekRef.ID)
 
-	slateSSs, err := weekRef.Collection("slates").OrderBy("created", fs.Desc).Limit(1).Documents(ctx).GetAll()
+	slateSSs, err := weekRef.Collection("slates").OrderBy("parsed", fs.Desc).Limit(1).Documents(ctx).GetAll()
 	if err != nil {
 		log.Fatalf("Unable to get most recent slate from Firestore: %v", err)
 	}
@@ -150,10 +152,17 @@ func main() {
 		if err != nil {
 			log.Fatalf("Unable to pick Game \"%s\": %v", gamess.Ref.Path, err)
 		}
-		picks[i] = pick
 		if gt == superdog {
+			// reverse superdog picks
+			if pick.PickedTeam.ID == game.HomeTeam.ID {
+				pick.PickedTeam = game.AwayTeam
+			} else {
+				pick.PickedTeam = game.HomeTeam
+			}
+			pick.PredictedProbability = 1 - pick.PredictedProbability
 			dogs = append(dogs, dogPick{teamID: pick.PickedTeam.ID, points: sgame.Value, prob: pick.PredictedProbability})
 		}
+		picks[i] = pick
 	}
 
 	// Pick dog by unpicking undogs. Huh.
@@ -169,7 +178,6 @@ func main() {
 		}
 	}
 
-	// TODO: lookup streak pick
 	var sp *firestore.StreakPick
 	if picker != "" {
 		_, pkRef, err := firestore.GetPickerByLukeName(ctx, fsClient, picker)
@@ -188,13 +196,12 @@ func main() {
 		}
 	}
 
-	log.Print(picks)
-	for i, pick := range picks {
+	for _, pick := range picks {
 		row, err := pick.BuildSlateRow(ctx)
 		if err != nil {
 			log.Fatalf("Unable to build slate row for pick: %v", err)
 		}
-		log.Printf("Pick %d: %v", i, row)
+		log.Printf("%s: %v", pick, row)
 	}
 	if sp != nil {
 		row, err := sp.BuildSlateRow(ctx)
@@ -266,6 +273,7 @@ func pickEm(
 				break
 			}
 		}
+		log.Printf("Using model %s to pick game %s", pred.Model.ID, ss.Ref.ID)
 		predRef := predRefs[i]
 		var perf firestore.ModelPerformance
 		var nilPerf firestore.ModelPerformance
@@ -276,7 +284,7 @@ func pickEm(
 		}
 		// use the prediction to fill out the pick
 		if pred != nilPred && perf != nilPerf {
-			p.FillOut(game, perf, pred, predRef)
+			p.FillOut(game, perf, pred, predRef, sgame.NoisySpread)
 			return p, nil
 		}
 	}
@@ -285,11 +293,12 @@ func pickEm(
 	}
 
 	// fallback onto best
+	log.Printf("Using fallback model to pick game %s", ss.Ref.ID)
 	pred, predRef, perf, err := getFallbackPrediction(ctx, predictions, predRefs, perfs, gt)
 	if err != nil {
 		return p, fmt.Errorf("unable to get fallback prediction: %v", err)
 	}
-	p.FillOut(game, perf, pred, predRef)
+	p.FillOut(game, perf, pred, predRef, sgame.NoisySpread)
 
 	return p, nil
 }
@@ -332,6 +341,7 @@ func getFallbackPrediction(ctx context.Context, preds []firestore.ModelPredictio
 	if bestPred == noPred {
 		err = fmt.Errorf("unable to get fallback model: no predictions match")
 	}
+	log.Printf("Fallback model chosen: %s", bestPred.Model.ID)
 
 	return
 }
@@ -385,8 +395,8 @@ func (b byValue) Len() int {
 
 // Less implements Sortable interface
 func (b byValue) Less(i, j int) bool {
-	vi := b[i].prob * (1. - float64(b[i].points))
-	vj := b[j].prob * (1. - float64(b[j].points))
+	vi := b[i].prob * float64(b[i].points)
+	vj := b[j].prob * float64(b[j].points)
 	if vi == vj {
 		return b[i].points < b[j].points
 	}

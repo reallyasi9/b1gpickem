@@ -14,6 +14,9 @@ type Slate struct {
 	// Created is the creation timestamp of the slate.
 	Created time.Time `firestore:"created"`
 
+	// Parsed is the parse timestamp of the slate.
+	Parsed time.Time `firestore:"parsed,serverTimestamp"`
+
 	// FileName is the full name of the parsed slate file. May be either a string representing a file location or a URL with a gs:// schema representing a Google Cloud Storage location.
 	FileName string `firestore:"file"`
 }

@@ -55,12 +55,26 @@ type Pick struct {
 	PredictedProbability float64 `firestore:"predicted_probability"`
 }
 
+// String implements Stringer interface
+func (p Pick) String() string {
+	var sb strings.Builder
+	sb.WriteString("Pick\n")
+	ss := make([]string, 0)
+	ss = append(ss, treeRef("SlateGame", 0, false, p.SlateGame))
+	ss = append(ss, treeRef("ModelPrediction", 0, false, p.ModelPrediction))
+	ss = append(ss, treeRef("PickedTeam", 0, false, p.PickedTeam))
+	ss = append(ss, treeFloat64("PredictedSpread", 0, false, p.PredictedSpread))
+	ss = append(ss, treeFloat64("PredictedProbability", 0, true, p.PredictedProbability))
+	sb.WriteString(strings.Join(ss, "\n"))
+	return sb.String()
+}
+
 // FillOut uses game and model performance information to fill out a pick
-func (p *Pick) FillOut(game Game, perf ModelPerformance, pred ModelPrediction, predRef *firestore.DocumentRef) {
-	dist := distuv.Normal{Mu: 0, Sigma: perf.StdDev}
+func (p *Pick) FillOut(game Game, perf ModelPerformance, pred ModelPrediction, predRef *firestore.DocumentRef, spread int) {
+	dist := distuv.Normal{Mu: perf.Bias, Sigma: perf.StdDev}
 	p.ModelPrediction = predRef
-	p.PredictedSpread = pred.Spread - perf.Bias
-	p.PredictedProbability = dist.CDF(p.PredictedSpread)
+	p.PredictedSpread = pred.Spread
+	p.PredictedProbability = dist.CDF(p.PredictedSpread - float64(spread))
 	p.PickedTeam = game.HomeTeam
 	if p.PredictedProbability < .5 {
 		p.PredictedProbability = 1. - p.PredictedProbability
@@ -125,7 +139,7 @@ func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 	if game.Superdog && p.PredictedProbability > 0.5 {
 		notes = append(notes, "The \"underdog\" might actually be favored!")
 	}
-	if math.Abs(p.PredictedSpread) >= 14 {
+	if game.NoisySpread == 0 && math.Abs(p.PredictedSpread) >= 14 {
 		notes = append(notes, "Maybe this should have been a noisy spread game?")
 	}
 	if game.NeutralDisagreement {

@@ -141,8 +141,7 @@ func parseSlate() {
 		Created:  ct,
 		FileName: slateLocation,
 	}
-	slateID := ct.Format(time.UnixDate)
-	slateRef := weekRef.Collection("slates").Doc(slateID)
+	slateRef := weekRef.Collection("slates").NewDoc()
 	err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
 		var err error
 		if Force {
@@ -265,6 +264,10 @@ func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl fire
 				return nil, err
 			}
 			if found {
+				value := 1
+				if gotw {
+					value = 2
+				}
 				game, swap, wn, ok := gl.LookupCorrectMatchup(matchup)
 				if !ok {
 					return nil, fmt.Errorf("pick matchup %+v not found", matchup)
@@ -281,6 +284,7 @@ func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl fire
 					Game:                game,
 					HomeDisagreement:    swap,
 					NeutralDisagreement: wn,
+					Value:               value,
 				}
 				// check the immediate next column for noise
 				if len(row.Cells) != icol+1 {
@@ -436,7 +440,6 @@ func parseDog(cell string, tl firestore.TeamRefsByName) (matchup firestore.Match
 		return
 	}
 	matchup.Home = teamRef.ID
-	favorite = teamRef.ID
 
 	name = submatches[2]
 	if teamRef, ok = tl[name]; !ok {
@@ -444,6 +447,7 @@ func parseDog(cell string, tl firestore.TeamRefsByName) (matchup firestore.Match
 		return
 	}
 	matchup.Away = teamRef.ID
+	favorite = teamRef.ID // second team listed is always the favorite
 
 	value, err = strconv.Atoi(submatches[3])
 

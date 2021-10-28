@@ -104,7 +104,7 @@ func updateModels() {
 	}
 
 	now := time.Now()
-	perfRef := weekRef.Collection("model-performances").Doc(now.Format(time.RFC3339))
+	perfRef := weekRef.Collection("model-performances").NewDoc()
 
 	if DryRun {
 		log.Printf("DRY RUN: would write the following to %s:", perfRef.Path)
