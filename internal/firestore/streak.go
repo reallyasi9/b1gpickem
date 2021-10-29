@@ -177,6 +177,12 @@ func GetRemainingStreaks(ctx context.Context, season, week *firestore.DocumentRe
 	return
 }
 
+type NoStreakPickError string
+
+func (f NoStreakPickError) Error() string {
+	return fmt.Sprintf("streak: no streak pick available for picker %s", string(f))
+}
+
 // GetStreakPredictions gets a StreakPredictions for a given picker. Returns an error if the picker does not have a streak prediction for the given week.
 func GetStreakPredictions(ctx context.Context, week, picker *firestore.DocumentRef) (StreakPredictions, *firestore.DocumentRef, error) {
 	var sp StreakPredictions
@@ -184,8 +190,11 @@ func GetStreakPredictions(ctx context.Context, week, picker *firestore.DocumentR
 	if err != nil {
 		return sp, nil, err
 	}
-	if len(sps) != 1 {
-		return sp, nil, fmt.Errorf("expected 1 document in %s for picker %s, got %d", STEAK_PREDICTIONS_COLLECTION, picker.Path, len(sps))
+	if len(sps) == 0 {
+		return sp, nil, NoStreakPickError(picker.ID)
+	}
+	if len(sps) > 1 {
+		return sp, nil, fmt.Errorf("ambiguous streak picks for picker %s", picker.ID)
 	}
 	err = sps[0].DataTo(&sp)
 	return sp, sps[0].Ref, err

@@ -208,6 +208,37 @@ func getFileOrGSReader(ctx context.Context, f string) (io.ReadCloser, error) {
 	return r, nil
 }
 
+func openFileOrGSWriter(ctx context.Context, f string) (io.WriteCloser, error) {
+	u, err := url.Parse(f)
+	if err != nil {
+		return nil, err
+	}
+	var w io.WriteCloser
+	switch u.Scheme {
+	case "gs":
+		gsClient, err := storage.NewClient(ctx)
+		if err != nil {
+			return nil, err
+		}
+		bucket := gsClient.Bucket(u.Host)
+		obj := bucket.Object(u.Path)
+		w = obj.NewWriter(ctx)
+
+	case "file":
+		fallthrough
+	case "":
+		w, err = os.Create(u.Path)
+		if err != nil {
+			return nil, err
+		}
+
+	default:
+		return nil, fmt.Errorf("unable to determine how to open '%s'", f)
+	}
+
+	return w, nil
+}
+
 // getCreationTime gets the creation time of a file on disk or in Google Storage.
 func getCreationTime(ctx context.Context, f string) (time.Time, error) {
 	var t time.Time

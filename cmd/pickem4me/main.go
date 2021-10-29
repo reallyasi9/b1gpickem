@@ -7,19 +7,11 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
 
 	fs "cloud.google.com/go/firestore"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
-
-// season holds the flag value of the season of the slate.
-var season int
-
-// week holds the flag value of the week of the slate.
-var week int
-
-// picker holds the flag value of the picker (for Beat the Streak picks).
-var picker string
 
 // suSystem holds the flag value of the system preferred for picking straight-up games.
 var suSystem string
@@ -36,16 +28,24 @@ var fallback bool
 // dryRun holds the flag value specifying whether data should not be written to Firestore.
 var dryRun bool
 
-// output holds the flag value of the output file name.
-var output string
+// force holds the flag value specifying whether data should be forcefully overwritten in Firestore.
+var force bool
 
 // projectID is the Google Cloud Storage project ID.
 var projectID string
 
 func usage() {
-	fmt.Fprintf(flag.CommandLine.Output(), `Usage: pickem4me [flags]
+	fmt.Fprintf(flag.CommandLine.Output(), `Usage: pickem4me [flags] <season> <week> <picker>
 	
 Records picks for a slate's games using predictions stored in Firestore.
+
+Arguments:
+  season (int)
+      Make picks for this season. If less than zero, the season will be guessed based on today's date.
+  week (int)
+      Make picks for this week. If less than zero, the week will be guessed based on today's date.
+  picker (string)
+      Register the picks to this picker. Also used to lookup the Beat the Streak picks.
 
 Flags:
 `)
@@ -56,15 +56,12 @@ Flags:
 func init() {
 	flag.Usage = usage
 
-	flag.IntVar(&season, "season", -1, "`Season` of the slate to pick. If less than zero, the most recent season in Firestore will be used.")
-	flag.IntVar(&week, "week", -1, "`Week` of the slate to pick. If less than zero, the week with the closest start date not in the past in Firestore will be used.")
-	flag.StringVar(&picker, "picker", "", "`Picker` for Beat the Streak picks. If an empty string, no Beat the Streak picks will be made.")
 	flag.StringVar(&suSystem, "su", "", "`System` to use for straight-up picks. System names begin with \"line\". If an empty string and \"-fallback\" is true, the system with the best straight-up prediction accuracy will be used, else an error is returned.")
 	flag.StringVar(&nsSystem, "ns", "", "`System` to use for noisy spread picks. System names begin with \"line\". If an empty string and \"-fallback\" is true, the system with the best mean squared error will be used, else an error is returned.")
 	flag.StringVar(&sdSystem, "sd", "", "`System` to use for superdog picks. System names begin with \"line\". If an empty string and \"-fallback\" is true, the system with the best mean squared error will be used, else an error is returned.")
 	flag.BoolVar(&fallback, "fallback", true, "If true, predictions missing for the various prediction systems will fall back on the best system available. If all else fails, Sagarin points will be used to predict a spread for the game.")
 	flag.BoolVar(&dryRun, "dryrun", false, "If true, log what would be written to Firestore, but do not write anything.")
-	flag.StringVar(&output, "output", "", "If not empty, output Excel Workbook to the given `location`. Specify a URL with a gs:// schema to store in a Google Cloud Storage bucket. Ignores \"-dryrun\".")
+	flag.BoolVar(&force, "force", false, "If true, force overwrite exiting documents in Firestore.")
 	flag.StringVar(&projectID, "project", os.Getenv("GCP_PROJECT"), "Use the Firestore database from the given Google Cloud `Project`. Defaults to the environment variable GCP_PROJECT.")
 }
 
@@ -75,6 +72,26 @@ func main() {
 	fsClient, err := fs.NewClient(ctx, projectID)
 	if err != nil {
 		log.Fatalf("Unable to create Firestore client: %v", err)
+	}
+
+	if flag.NArg() != 3 {
+		flag.Usage()
+		log.Fatalf("Season, Week, and Picker arguments required.")
+	}
+	season, err := strconv.Atoi(flag.Arg(0))
+	if err != nil {
+		flag.Usage()
+		log.Fatalf("Season '%s' not an integer.", flag.Arg(0))
+	}
+	week, err := strconv.Atoi(flag.Arg(1))
+	if err != nil {
+		flag.Usage()
+		log.Fatalf("Week '%s' not an integer.", flag.Arg(1))
+	}
+	picker := flag.Arg(2)
+	_, pkRef, err := firestore.GetPickerByLukeName(ctx, fsClient, picker)
+	if err != nil {
+		log.Fatalf("Unable to lookup picker '%s': %v", picker, err)
 	}
 
 	_, seasonRef, err := firestore.GetSeason(ctx, fsClient, season)
@@ -179,39 +196,62 @@ func main() {
 	}
 
 	var sp *firestore.StreakPick
-	if picker != "" {
-		_, pkRef, err := firestore.GetPickerByLukeName(ctx, fsClient, picker)
-		if err != nil {
-			log.Fatalf("Unable to lookup picker '%s': %v", picker, err)
-		}
-		s, spRef, err := firestore.GetStreakPredictions(ctx, weekRef, pkRef)
-		if err != nil {
+	s, spRef, err := firestore.GetStreakPredictions(ctx, weekRef, pkRef)
+	if err != nil {
+		if _, ok := err.(firestore.NoStreakPickError); !ok {
 			log.Fatalf("Unable to lookup streak prediction for picker '%s': %v", picker, err)
 		}
+	} else if spRef != nil {
 		sp = &firestore.StreakPick{
 			PickedTeams:          s.BestPick,
 			StreakPredictions:    spRef,
 			PredictedSpread:      s.Spread,
 			PredictedProbability: s.Probability,
+			Picker:               pkRef,
 		}
 	}
 
-	for _, pick := range picks {
-		row, err := pick.BuildSlateRow(ctx)
-		if err != nil {
-			log.Fatalf("Unable to build slate row for pick: %v", err)
+	// write what I have
+	if dryRun {
+		log.Print("DRY RUN: would write the following to Firestore")
+		for _, p := range picks {
+			log.Printf("%s", p)
 		}
-		log.Printf("%s: %v", pick, row)
-	}
-	if sp != nil {
-		row, err := sp.BuildSlateRow(ctx)
-		if err != nil {
-			log.Fatalf("Unable to build slate row for streak pick: %v", err)
-		}
-		log.Printf("Streak Pick: %v", row)
+		log.Printf("%+v", sp)
+		return
 	}
 
-	// TODO: write to Firestore
+	picksCollection := weekRef.Collection(firestore.PICKS_COLLECTION)
+	streaksCollection := weekRef.Collection(firestore.STEAK_PREDICTIONS_COLLECTION)
+
+	err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
+
+		for _, pick := range picks {
+			pick.Picker = pkRef
+			pickRef := picksCollection.NewDoc()
+			if force {
+				err = t.Set(pickRef, &pick)
+			} else {
+				err = t.Create(pickRef, &pick)
+			}
+			if err != nil {
+				return err
+			}
+		}
+
+		if sp == nil {
+			return err
+		}
+		spDoc := streaksCollection.NewDoc()
+		if force {
+			err = t.Set(spDoc, sp)
+		} else {
+			err = t.Create(spDoc, sp)
+		}
+
+		return err
+	})
+
 	// TODO: output Excel file for submission
 	// TODO: write Excel file to Store?
 }

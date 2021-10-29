@@ -11,30 +11,12 @@ import (
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
+const PICKS_COLLECTION = "picks"
+const STREAK_PICKS_COLLECTION = "streak-picks"
+
 type SlateRowBuilder interface {
 	// BuildSlateRow creates a row of strings for output into a slate spreadsheet.
 	BuildSlateRow(ctx context.Context) ([]string, error)
-}
-
-// Picks represents a collection of pickers' picks for the week.
-type Picks struct {
-	// Season is a reference to the season document for these picks.
-	Season *firestore.DocumentRef `firestore:"season"`
-
-	// Week is a reference to the week of the picks.
-	Week *firestore.DocumentRef `firestore:"week"`
-
-	// Slate is a reference to the slate containing the picks.
-	Slate *firestore.DocumentRef `firestore:"slate"`
-
-	// Timestamp is the time the picks were written to Firestore.
-	Timestamp time.Time `firestore:"timestamp,serverTimestamp"`
-
-	// Picker is a reference to the picker who made the picks.
-	Picker *firestore.DocumentRef `firestore:"picker"`
-
-	// Picks is a map of references to picks, indexed by row in the original slate. See: Slate.Games for the order.
-	Picks map[int]*firestore.DocumentRef `firestore:"picks"`
 }
 
 // Pick is a pick on a game. See: SlateGame, ModelPrediction, and Team for references.
@@ -53,6 +35,12 @@ type Pick struct {
 
 	// PredictedProbability is the probability the pick is correct (including possible noisy spread adjustments).
 	PredictedProbability float64 `firestore:"predicted_probability"`
+
+	// Timestamp is the time the picks were written to Firestore.
+	Timestamp time.Time `firestore:"timestamp,serverTimestamp"`
+
+	// Picker is a reference to the picker who made the picks.
+	Picker *firestore.DocumentRef `firestore:"picker"`
 }
 
 // String implements Stringer interface
@@ -67,6 +55,27 @@ func (p Pick) String() string {
 	ss = append(ss, treeFloat64("PredictedProbability", 0, true, p.PredictedProbability))
 	sb.WriteString(strings.Join(ss, "\n"))
 	return sb.String()
+}
+
+// GetPicks gets a picker's picks for a given week.
+func GetPicks(ctx context.Context, weekRef, pickerRef *firestore.DocumentRef) (picks []Pick, pickRefs []*firestore.DocumentRef, err error) {
+	picks = make([]Pick, 0)
+	pickRefs = make([]*firestore.DocumentRef, 0)
+
+	snaps, err := weekRef.Collection(PICKS_COLLECTION).Where("picker", "==", pickerRef).Documents(ctx).GetAll()
+	if err != nil {
+		return
+	}
+	for _, snap := range snaps {
+		var pick Pick
+		if err = snap.DataTo(&pick); err != nil {
+			return
+		}
+		picks = append(picks, pick)
+		pickRefs = append(pickRefs, snap.Ref)
+	}
+
+	return
 }
 
 // FillOut uses game and model performance information to fill out a pick
@@ -97,60 +106,177 @@ type StreakPick struct {
 
 	// PredictedProbability is the probability of beating the streak.
 	PredictedProbability float64 `firestore:"predicted_probability"`
+
+	// Timestamp is the time the picks were written to Firestore.
+	Timestamp time.Time `firestore:"timestamp,serverTimestamp"`
+
+	// Picker is a reference to the picker who made the picks.
+	Picker *firestore.DocumentRef `firestore:"picker"`
+}
+
+// GetStreakPick gets a picker's BTS pick for a given week.
+func GetStreakPick(ctx context.Context, weekRef, pickerRef *firestore.DocumentRef) (pick StreakPick, ref *firestore.DocumentRef, err error) {
+	snaps, err := weekRef.Collection(STREAK_PICKS_COLLECTION).Where("picker", "==", pickerRef).Documents(ctx).GetAll()
+	if err != nil {
+		return
+	}
+	if len(snaps) == 0 {
+		err = NoStreakPickError(fmt.Sprintf("picker %s has no streak pick for week %s", pickerRef.ID, weekRef.ID))
+		return
+	}
+	if len(snaps) > 1 {
+		err = fmt.Errorf("ambiguous streak pick for picker %s in week %s", pickerRef.ID, weekRef.ID)
+		return
+	}
+	if err = snaps[0].DataTo(&pick); err != nil {
+		return
+	}
+	ref = snaps[0].Ref
+
+	return
 }
 
 // BuildSlateRow fills out the remaining 4 cells for a pick in a slate.
 func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
-	// pick, spread, notes, expected value
-	output := make([]string, 4)
+	// game, instruction, pick, spread, notes, expected value
+	output := make([]string, 6)
 
 	// need to know the game to get the notes right
-	var gameDoc *firestore.DocumentSnapshot
+	var sgameDoc *firestore.DocumentSnapshot
 	var err error
-	if gameDoc, err = p.SlateGame.Get(ctx); err != nil {
+	if sgameDoc, err = p.SlateGame.Get(ctx); err != nil {
 		return nil, err
 	}
-	var game SlateGame
+	var sgame SlateGame
+	if err = sgameDoc.DataTo(&sgame); err != nil {
+		return nil, err
+	}
+
+	// need to know the home and away teams, so need to get the game proper.
+	var gameDoc *firestore.DocumentSnapshot
+	if gameDoc, err = sgame.Game.Get(ctx); err != nil {
+		return nil, err
+	}
+	var game Game
 	if err = gameDoc.DataTo(&game); err != nil {
 		return nil, err
 	}
 
-	// only pick if the team is not nil (else this is a Superdog game that wasn't picked)
-	if p.PickedTeam != nil {
-		var doc *firestore.DocumentSnapshot
-		var err error
-		if doc, err = p.PickedTeam.Get(ctx); err != nil {
-			return nil, err
-		}
-		var pt Team
-		if err = doc.DataTo(&pt); err != nil {
-			return nil, err
-		}
-
-		output[0] = pt.School
+	var homeTeamDoc *firestore.DocumentSnapshot
+	if homeTeamDoc, err = game.HomeTeam.Get(ctx); err != nil {
+		return nil, err
+	}
+	var homeTeam Team
+	if err = homeTeamDoc.DataTo(&homeTeam); err != nil {
+		return nil, err
+	}
+	var awayTeamDoc *firestore.DocumentSnapshot
+	if awayTeamDoc, err = game.AwayTeam.Get(ctx); err != nil {
+		return nil, err
+	}
+	var awayTeam Team
+	if err = awayTeamDoc.DataTo(&awayTeam); err != nil {
+		return nil, err
 	}
 
-	output[1] = fmt.Sprintf("%+0.2f", p.PredictedSpread)
+	// Game is straight forward
+	var gameSB strings.Builder
+	if sgame.Superdog {
+		if sgame.HomeFavored {
+			if sgame.AwayRank > 0 {
+				gameSB.WriteString(fmt.Sprintf("#%d ", sgame.AwayRank))
+			}
+			gameSB.WriteString(awayTeam.School)
+		} else {
+			if sgame.HomeRank > 0 {
+				gameSB.WriteString(fmt.Sprintf("#%d ", sgame.HomeRank))
+			}
+			gameSB.WriteString(homeTeam.School)
+		}
+		gameSB.WriteString(" upsets ")
+		if sgame.HomeFavored {
+			if sgame.HomeRank > 0 {
+				gameSB.WriteString(fmt.Sprintf("#%d ", sgame.HomeRank))
+			}
+			gameSB.WriteString(homeTeam.School)
+			gameSB.WriteString(" on the road")
+		} else {
+			if sgame.AwayRank > 0 {
+				gameSB.WriteString(fmt.Sprintf("#%d ", sgame.AwayRank))
+			}
+			gameSB.WriteString(awayTeam.School)
+			gameSB.WriteString(" at home")
+		}
+	} else {
+		if sgame.GOTW {
+			gameSB.WriteString("** ")
+		}
+		if sgame.AwayRank > 0 {
+			gameSB.WriteString(fmt.Sprintf("#%d ", sgame.AwayRank))
+		}
+		gameSB.WriteString(awayTeam.School)
+		if game.NeutralSite {
+			gameSB.WriteString(" vs ")
+		} else {
+			gameSB.WriteString(" @ ")
+		}
+		if sgame.HomeRank > 0 {
+			gameSB.WriteString(fmt.Sprintf("#%d ", sgame.HomeRank))
+		}
+		gameSB.WriteString(homeTeam.School)
+		if sgame.GOTW {
+			gameSB.WriteString(" **")
+		}
+	}
+	output[0] = gameSB.String()
+
+	// Instructions only apply to noisy spreads
+	var instructionsSB strings.Builder
+	if sgame.NoisySpread != 0 {
+		instructionsSB.WriteString("Pick ")
+		if sgame.HomeFavored {
+			instructionsSB.WriteString(homeTeam.School)
+		} else {
+			instructionsSB.WriteString(awayTeam.School)
+		}
+		ns := sgame.NoisySpread
+		if ns < 0 {
+			ns *= -1
+		}
+		instructionsSB.WriteString(fmt.Sprintf(" iff you think they will win by at least %d points", ns))
+	}
+	output[1] = instructionsSB.String()
+
+	// only pick if the team is not nil (else this is a Superdog game that wasn't picked)
+	if p.PickedTeam != nil {
+		if p.PickedTeam.ID == homeTeamDoc.Ref.ID {
+			output[2] = homeTeam.Mascot
+		} else {
+			output[2] = awayTeam.Mascot
+		}
+	}
+
+	output[3] = fmt.Sprintf("%+0.2f", p.PredictedSpread)
 
 	notes := make([]string, 0)
 	if p.PredictedProbability > .8 {
 		notes = append(notes, "Not even close.")
 	}
-	if game.Superdog && p.PredictedProbability > 0.5 {
+	if sgame.Superdog && p.PredictedProbability > 0.5 {
 		notes = append(notes, "The \"underdog\" might actually be favored!")
 	}
-	if game.NoisySpread == 0 && math.Abs(p.PredictedSpread) >= 14 {
+	if sgame.NoisySpread == 0 && math.Abs(p.PredictedSpread) >= 14 {
 		notes = append(notes, "Maybe this should have been a noisy spread game?")
 	}
-	if game.NeutralDisagreement {
+	if sgame.NeutralDisagreement {
 		notes = append(notes, "NOTE: This game might not be where you think it is.")
 	}
-	if game.HomeDisagreement {
-		notes = append(notes, "NOTE: The slate seems to be incorrect about which team is home and which is away!")
+	if sgame.HomeDisagreement {
+		notes = append(notes, "NOTE: The home team might not be who you think it is.")
 	}
-	output[2] = strings.Join(notes, "\n")
+	output[4] = strings.Join(notes, "\n")
 
-	output[3] = fmt.Sprintf("%0.3f", p.PredictedProbability*float64(game.Value))
+	output[5] = fmt.Sprintf("%0.3f", p.PredictedProbability*float64(sgame.Value))
 
 	return output, nil
 }
@@ -159,8 +285,10 @@ func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 // TODO: still not printing DDs correctly.
 func (sg StreakPick) BuildSlateRow(ctx context.Context) ([]string, error) {
 
-	// pick(s), total remaining spread, notes?, probability of beating the streak
-	output := make([]string, 4)
+	// game, instruction, pick(s), total remaining spread, notes?, probability of beating the streak
+	output := make([]string, 6)
+
+	output[0] = "BEAT THE STREAK!"
 
 	pickedTeams := make([]string, len(sg.PickedTeams))
 	for i, teamRef := range sg.PickedTeams {
@@ -173,14 +301,18 @@ func (sg StreakPick) BuildSlateRow(ctx context.Context) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		pickedTeams[i] = team.School
+		pickedTeams[i] = team.Mascot
 	}
 
-	output[0] = strings.Join(pickedTeams, "\n")
+	if len(pickedTeams) == 0 {
+		output[2] = "BYE"
+	} else {
+		output[2] = strings.Join(pickedTeams, " AND ")
+	}
 
-	output[1] = fmt.Sprintf("%0.12f", sg.PredictedSpread)
+	output[3] = fmt.Sprintf("%0.12f", sg.PredictedSpread)
 
-	output[3] = fmt.Sprintf("%0.4f", sg.PredictedProbability)
+	output[5] = fmt.Sprintf("%0.4f", sg.PredictedProbability)
 
 	return output, nil
 }
