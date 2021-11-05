@@ -5,6 +5,7 @@ import (
 )
 
 func init() {
+	pickem.InitializeSubcommand()
 	Commands[pickem.COMMAND] = pickem.Pickem
 	Usage[pickem.COMMAND] = pickem.Usage
 }

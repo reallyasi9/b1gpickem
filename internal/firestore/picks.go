@@ -52,7 +52,8 @@ func (p Pick) String() string {
 	ss = append(ss, treeRef("ModelPrediction", 0, false, p.ModelPrediction))
 	ss = append(ss, treeRef("PickedTeam", 0, false, p.PickedTeam))
 	ss = append(ss, treeFloat64("PredictedSpread", 0, false, p.PredictedSpread))
-	ss = append(ss, treeFloat64("PredictedProbability", 0, true, p.PredictedProbability))
+	ss = append(ss, treeFloat64("PredictedProbability", 0, false, p.PredictedProbability))
+	ss = append(ss, treeRef("Picker", 0, true, p.Picker))
 	sb.WriteString(strings.Join(ss, "\n"))
 	return sb.String()
 }
