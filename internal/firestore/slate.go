@@ -10,7 +10,7 @@ import (
 )
 
 const SLATES_COLLECTION = "slates"
-const SLATE_GAMES_COLLECTION = "slates"
+const SLATE_GAMES_COLLECTION = "games"
 
 // Slate represents how a slate is stored in Firestore. Slates contain a collection of SlateGames.
 type Slate struct {
