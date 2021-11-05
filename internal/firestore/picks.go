@@ -266,7 +266,7 @@ func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 	if sgame.Superdog && p.PredictedProbability > 0.5 {
 		notes = append(notes, "The \"underdog\" might actually be favored!")
 	}
-	if sgame.NoisySpread == 0 && math.Abs(p.PredictedSpread) >= 14 {
+	if sgame.NoisySpread == 0 && !sgame.Superdog && math.Abs(p.PredictedSpread) >= 14 {
 		notes = append(notes, "Maybe this should have been a noisy spread game?")
 	}
 	if sgame.NeutralDisagreement {
