@@ -217,7 +217,7 @@ func main() {
 		for _, p := range picks {
 			log.Printf("%s", p)
 		}
-		log.Printf("%+v", sp)
+		log.Printf("Streak pick: %+v", sp)
 		return
 	}
 
