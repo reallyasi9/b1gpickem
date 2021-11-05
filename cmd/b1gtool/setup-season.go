@@ -127,7 +127,7 @@ func setupSeason() {
 		id := weeks.ID(i)
 		wr := weeks.Ref(i)
 		gs := games.GetWeek(int(id))
-		if err := gs.LinkRefs(teams, venues, wr.Collection("games")); err != nil {
+		if err := gs.LinkRefs(teams, venues, wr.Collection(firestore.GAMES_COLLECTION)); err != nil {
 			panic(err)
 		}
 		gamesByWeek[id] = gs

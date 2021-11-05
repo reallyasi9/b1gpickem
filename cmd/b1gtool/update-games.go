@@ -116,7 +116,7 @@ func updateGames() {
 			for i := 0; i < games.Len(); i++ {
 				id := games.ID(i)
 				game := games.Datum(i).(firestore.Game)
-				gameRef := weekRef.Collection("games").Doc(strconv.Itoa(int(id)))
+				gameRef := weekRef.Collection(firestore.GAMES_COLLECTION).Doc(strconv.Itoa(int(id)))
 				err := tx.Update(gameRef, []fs.Update{
 					{Path: "home_points", Value: game.HomePoints},
 					{Path: "away_points", Value: game.AwayPoints},

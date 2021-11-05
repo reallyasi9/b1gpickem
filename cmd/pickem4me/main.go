@@ -106,7 +106,7 @@ func main() {
 	}
 	log.Printf("Using week %s", weekRef.ID)
 
-	slateSSs, err := weekRef.Collection("slates").OrderBy("parsed", fs.Desc).Limit(1).Documents(ctx).GetAll()
+	slateSSs, err := weekRef.Collection(firestore.SLATES_COLLECTION).OrderBy("parsed", fs.Desc).Limit(1).Documents(ctx).GetAll()
 	if err != nil {
 		log.Fatalf("Unable to get most recent slate from Firestore: %v", err)
 	}
@@ -115,7 +115,7 @@ func main() {
 	}
 
 	slateRef := slateSSs[0].Ref
-	sgss, err := slateRef.Collection("games").Documents(ctx).GetAll()
+	sgss, err := slateRef.Collection(firestore.SLATE_GAMES_COLLECTION).Documents(ctx).GetAll()
 	if err != nil {
 		log.Fatalf("Unable to get games from slate at path \"%s\": %v", slateRef.Path, err)
 	}
