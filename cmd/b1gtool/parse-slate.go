@@ -141,7 +141,7 @@ func parseSlate() {
 		Created:  ct,
 		FileName: slateLocation,
 	}
-	slateRef := weekRef.Collection("slates").NewDoc()
+	slateRef := weekRef.Collection(firestore.SLATES_COLLECTION).NewDoc()
 	err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
 		var err error
 		if Force {
@@ -155,7 +155,7 @@ func parseSlate() {
 
 		for _, game := range sgames {
 			gameID := game.Game.ID // convenient
-			gameRef := slateRef.Collection("games").Doc(gameID)
+			gameRef := slateRef.Collection(firestore.SLATE_GAMES_COLLECTION).Doc(gameID)
 			if Force {
 				err = t.Set(gameRef, &game)
 			} else {
