@@ -41,7 +41,7 @@ Arguments:
 Flags:
 `)
 
-	ugFlagSet.PrintDefaults()
+	upFlagSet.PrintDefaults()
 
 	fmt.Fprint(flag.CommandLine.Output(), "\nGlobal Flags:\n")
 
