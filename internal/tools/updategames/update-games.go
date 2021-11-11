@@ -116,10 +116,19 @@ func UpdateGames() {
 			if !weekS.Exists() {
 				return fmt.Errorf("week %d does not exist (%s)", wn, weekRef.Path)
 			}
+			updates := make(map[*fs.DocumentRef]firestore.Game)
 			for i := 0; i < games.Len(); i++ {
 				id := games.ID(i)
 				game := games.Datum(i).(firestore.Game)
 				gameRef := weekRef.Collection(firestore.GAMES_COLLECTION).Doc(strconv.Itoa(int(id)))
+				snap, err := tx.Get(gameRef)
+				if err != nil || !snap.Exists() {
+					log.Printf("Game %s does not exist in Firestore, so it will not be updated. Use setup-season to pick up this new game.", gameRef.Path)
+					continue
+				}
+				updates[gameRef] = game
+			}
+			for gameRef, game := range updates {
 				err := tx.Update(gameRef, []fs.Update{
 					{Path: "home_points", Value: game.HomePoints},
 					{Path: "away_points", Value: game.AwayPoints},
