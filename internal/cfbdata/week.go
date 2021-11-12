@@ -25,7 +25,13 @@ type WeekCollection struct {
 	ids     map[int64]int
 }
 
-func GetWeeks(client *http.Client, key string, season int) (WeekCollection, error) {
+func GetWeeks(client *http.Client, key string, season int, weekNumbers []int) (WeekCollection, error) {
+
+	keep := make(map[int]struct{})
+	for _, n := range weekNumbers {
+		keep[n] = struct{}{}
+	}
+
 	body, err := DoRequest(client, key, fmt.Sprintf("https://api.collegefootballdata.com/calendar?year=%d", season))
 	if err != nil {
 		return WeekCollection{}, fmt.Errorf("failed to do calendar request: %v", err)
@@ -37,14 +43,23 @@ func GetWeeks(client *http.Client, key string, season int) (WeekCollection, erro
 		return WeekCollection{}, fmt.Errorf("failed to unmarshal calendar response body: %v", err)
 	}
 
-	f := make([]firestore.Week, len(weeks))
-	refs := make([]*fs.DocumentRef, len(weeks))
+	kept := make([]Week, 0, len(weeks))
+	f := make([]firestore.Week, 0, len(weeks))
+	refs := make([]*fs.DocumentRef, 0, len(weeks))
 	ids := make(map[int64]int)
-	for i, w := range weeks {
-		f[i] = w.toFirestore()
+	i := 0
+	for _, w := range weeks {
+		_, ok := keep[int(w.Number)]
+		if len(weekNumbers) > 0 && !ok {
+			continue
+		}
+		kept = append(kept, w)
+		f = append(f, w.toFirestore())
+		refs = append(refs, nil)
 		ids[w.Number] = i
+		i++
 	}
-	return WeekCollection{weeks: weeks, fsWeeks: f, refs: refs, ids: ids}, nil
+	return WeekCollection{weeks: kept, fsWeeks: f, refs: refs, ids: ids}, nil
 }
 
 // Len returns the number of weeks in the collection
