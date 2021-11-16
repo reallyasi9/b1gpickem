@@ -84,7 +84,7 @@ func updatePredictions() {
 		log.Fatalf("Failed to create firestore client: %v", err)
 	}
 
-	seasonRef := fsClient.Collection("seasons").Doc(year)
+	seasonRef := fsClient.Collection(firestore.SEASONS_COLLECTION).Doc(year)
 	teams, refs, err := firestore.GetTeams(ctx, seasonRef)
 	if err != nil {
 		log.Fatalf("Failed to get teams: %v", err)

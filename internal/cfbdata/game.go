@@ -136,6 +136,30 @@ func (gc GameCollection) GetWeek(week int) GameCollection {
 	return GameCollection{games: gw, fsGames: fw, refs: rw, ids: iw}
 }
 
+// Split splits a GameCollection into two based on idices to include or exclude from the results.
+func (gc GameCollection) Split(include []int) (in GameCollection, out GameCollection) {
+	includeMap := make(map[int]struct{})
+	for _, i := range include {
+		includeMap[i] = struct{}{}
+	}
+	in.ids = make(map[int64]int)
+	out.ids = make(map[int64]int)
+	for i := 0; i < gc.Len(); i++ {
+		if _, ok := includeMap[i]; ok {
+			in.fsGames = append(in.fsGames, gc.fsGames[i])
+			in.games = append(in.games, gc.games[i])
+			in.refs = append(in.refs, gc.refs[i])
+			in.ids[gc.games[i].ID] = i
+		} else {
+			out.fsGames = append(out.fsGames, gc.fsGames[i])
+			out.games = append(out.games, gc.games[i])
+			out.refs = append(out.refs, gc.refs[i])
+			out.ids[gc.games[i].ID] = i
+		}
+	}
+	return
+}
+
 func (gc GameCollection) LinkRefs(tc TeamCollection, vc VenueCollection, col *fs.CollectionRef) error {
 	for i, g := range gc.games {
 		id := g.ID

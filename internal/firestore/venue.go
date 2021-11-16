@@ -2,6 +2,8 @@ package firestore
 
 import "strings"
 
+const VENUES_COLLECTION = "venues"
+
 type Venue struct {
 	Name        string    `firestore:"name"`
 	Capacity    int       `firestore:"capacity"`

@@ -94,7 +94,7 @@ func updateModels() {
 		log.Fatalf("Error parsing performance table: %v", err)
 	}
 
-	weekRef := fsClient.Collection("seasons").Doc(year).Collection("weeks").Doc(week)
+	weekRef := fsClient.Collection(firestore.SEASONS_COLLECTION).Doc(year).Collection("weeks").Doc(week)
 	weekSS, err := weekRef.Get(ctx)
 	if err != nil {
 		log.Fatalf("Error getting week snapshot: %v", err)

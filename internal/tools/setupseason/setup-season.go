@@ -118,7 +118,7 @@ func SetupSeason() {
 	teams = teams.EliminateNonContenders(games)
 
 	// set everything up to write to firestore
-	seasonRef := fsClient.Collection("seasons").Doc(strconv.Itoa(year))
+	seasonRef := fsClient.Collection(firestore.SEASONS_COLLECTION).Doc(strconv.Itoa(year))
 	season := firestore.Season{
 		Year:            year,
 		StartTime:       weeks.FirstStartTime(),
@@ -126,13 +126,13 @@ func SetupSeason() {
 		StreakTeams:     make([]*fs.DocumentRef, 0),
 		StreakPickTypes: make([]int, 0),
 	}
-	if err := weeks.LinkRefs(seasonRef.Collection("weeks")); err != nil {
+	if err := weeks.LinkRefs(seasonRef.Collection(firestore.WEEKS_COLLECTION)); err != nil {
 		panic(err)
 	}
-	if err := venues.LinkRefs(seasonRef.Collection("venues")); err != nil {
+	if err := venues.LinkRefs(seasonRef.Collection(firestore.VENUES_COLLECTION)); err != nil {
 		panic(err)
 	}
-	if err := teams.LinkRefs(venues, seasonRef.Collection("teams")); err != nil {
+	if err := teams.LinkRefs(venues, seasonRef.Collection(firestore.TEAMS_COLLECTION)); err != nil {
 		panic(err)
 	}
 	gamesByWeek := make(map[int64]cfbdata.GameCollection)

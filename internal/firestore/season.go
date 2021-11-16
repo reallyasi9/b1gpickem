@@ -8,6 +8,8 @@ import (
 	"cloud.google.com/go/firestore"
 )
 
+const SEASONS_COLLECTION = "seasons"
+
 // Season represents a Pick 'Em season.
 type Season struct {
 	// Year acts like a name for the season. It is the year that the season begins.
@@ -34,7 +36,7 @@ type Season struct {
 // GetSeason gets the season defined by `year`. If `year<0`, the most recent season (by `start_time`) is returned.
 func GetSeason(ctx context.Context, client *firestore.Client, year int) (Season, *firestore.DocumentRef, error) {
 	var s Season
-	seasonCol := client.Collection("seasons")
+	seasonCol := client.Collection(SEASONS_COLLECTION)
 	var q firestore.Query
 	if year < 0 {
 		q = seasonCol.OrderBy("start_time", firestore.Desc).Limit(1)
