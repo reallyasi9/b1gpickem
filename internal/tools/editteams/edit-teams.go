@@ -71,9 +71,6 @@ func (a addShortName) Set(val string) error {
 
 var shortNamesToAdd []idShortName
 
-// season is the season in which the teams should be edited.
-var season int
-
 // Usage is the usage documentation for the edit-teams subcommand.
 func Usage() {
 	fmt.Fprintf(flag.CommandLine.Output(), `Usage: %s [global-flags] %s <season> [flags]
