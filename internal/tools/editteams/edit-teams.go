@@ -148,7 +148,7 @@ func shortNameAdd(ctx context.Context, fsClient *fs.Client, season int, snTeams 
 		return err
 	}
 
-	writeMe := make(map[string]firestore.Team, 0)
+	writeMe := make(map[string]firestore.Team)
 	for _, snTeam := range snTeams {
 		var team firestore.Team
 		var ok bool
