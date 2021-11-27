@@ -7,6 +7,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/alecthomas/kong"
 )
 
 // ProjectID is the Google Cloud Project ID where the season data will be loaded.
@@ -51,16 +53,23 @@ func init() {
 	flag.BoolVar(&DryRun, "dryrun", false, "Do not write to firestore, but print to console instead.")
 }
 
+type globalCmd struct {
+	ProjectID string `help:"GCP project ID." env:"GCP_PROJECT" required:""`
+}
+
 func main() {
-	parseCommandLine()
-	cmd := flag.Arg(0)
-	c, ok := Commands[cmd]
-	if !ok {
-		flag.Usage()
-		log.Fatalf("Unrecognized command \"%s\"", cmd)
-	}
-	c()
-	log.Print("Done.")
+	// parseCommandLine()
+	// cmd := flag.Arg(0)
+	// c, ok := Commands[cmd]
+	// if !ok {
+	// 	flag.Usage()
+	// 	log.Fatalf("Unrecognized command \"%s\"", cmd)
+	// }
+	// c()
+	// log.Print("Done.")
+	ctx := kong.Parse(&editPickersCLI)
+	err := ctx.Run(&editPickersCLI.globalCmd)
+	ctx.FatalIfErrorf(err)
 }
 
 func parseCommandLine() {

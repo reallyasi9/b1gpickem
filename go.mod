@@ -5,6 +5,7 @@ go 1.17
 require (
 	cloud.google.com/go/firestore v1.5.0
 	cloud.google.com/go/storage v1.10.0
+	github.com/alecthomas/kong v0.2.18
 	github.com/atgjack/prob v0.0.0-20161220081030-6cfd5d401186
 	github.com/segmentio/fasthash v1.0.3
 	github.com/tealeg/xlsx v1.0.5
@@ -15,13 +16,13 @@ require (
 
 require (
 	cloud.google.com/go v0.90.0 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.0.5 // indirect
 	github.com/jstemmer/go-junit-report v0.9.1 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/richardlehane/mscfb v1.0.3 // indirect
 	github.com/richardlehane/msoleps v1.0.1 // indirect
 	github.com/xuri/efp v0.0.0-20210322160811-ab561f5b45e3 // indirect

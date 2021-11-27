@@ -33,3 +33,5 @@ firebase-data/
 # Firebase config
 .firebaserc
 firebase.json
+
+*.xlsx
