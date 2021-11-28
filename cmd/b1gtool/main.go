@@ -3,8 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
-	"os"
 	"sort"
 	"strings"
 
@@ -57,37 +55,25 @@ type globalCmd struct {
 	ProjectID string `help:"GCP project ID." env:"GCP_PROJECT" required:""`
 }
 
-func main() {
-	// parseCommandLine()
-	// cmd := flag.Arg(0)
-	// c, ok := Commands[cmd]
-	// if !ok {
-	// 	flag.Usage()
-	// 	log.Fatalf("Unrecognized command \"%s\"", cmd)
-	// }
-	// c()
-	// log.Print("Done.")
-	ctx := kong.Parse(&editPickersCLI)
-	err := ctx.Run(&editPickersCLI.globalCmd)
-	ctx.FatalIfErrorf(err)
+var CLI struct {
+	globalCmd
+
+	Pickers struct {
+		Add        addPickersCmd        `cmd:"" help:"Add pickers."`
+		Rm         rmPickersCmd         `cmd:"" help:"Remove pickers."`
+		Ls         lsPickersCmd         `cmd:"" help:"List all pickers."`
+		Edit       editPickerCmd        `cmd:"" help:"Edit picker."`
+		Activate   activatePickersCmd   `cmd:"" help:"Activate pickers for a season."`
+		Deactivate deactivatePickersCmd `cmd:"" help:"Deactivate pickers for a season."`
+	} `cmd:""`
+
+	Teams struct {
+		Edit editTeamCmd `cmd:"" help:"Edit team."`
+	} `cmd:""`
 }
 
-func parseCommandLine() {
-	flag.Parse()
-
-	if flag.NArg() < 1 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	if flag.Arg(0) == "help" {
-		return
-	}
-
-	if ProjectID == "" {
-		ProjectID = os.Getenv("GCP_PROJECT")
-	}
-	if ProjectID == "" {
-		log.Fatal("Project ID flag not supplied and no GCP_PROJECT environment variable found")
-	}
+func main() {
+	ctx := kong.Parse(&CLI)
+	err := ctx.Run(&CLI.globalCmd)
+	ctx.FatalIfErrorf(err)
 }

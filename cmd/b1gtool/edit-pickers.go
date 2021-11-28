@@ -138,16 +138,3 @@ func (a *deactivatePickersCmd) Run(g *globalCmd) error {
 	ctx.Season = a.Season
 	return editpickers.DeactivatePickers(ctx)
 }
-
-var editPickersCLI struct {
-	globalCmd
-
-	Pickers struct {
-		Add        addPickersCmd        `cmd:"" help:"Add pickers."`
-		Rm         rmPickersCmd         `cmd:"" help:"Remove pickers."`
-		Ls         lsPickersCmd         `cmd:"" help:"List all pickers."`
-		Edit       editPickerCmd        `cmd:"" help:"Edit picker."`
-		Activate   activatePickersCmd   `cmd:"" help:"Activate pickers for a season."`
-		Deactivate deactivatePickersCmd `cmd:"" help:"Deactivate pickers for a season."`
-	} `cmd:""`
-}
