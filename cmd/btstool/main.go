@@ -1,84 +1,43 @@
 package main
 
-import (
-	"flag"
-	"fmt"
-	"log"
-	"os"
-	"sort"
-	"strings"
-)
+import "github.com/alecthomas/kong"
 
-// ProjectID is the Google Cloud Project ID where the season data will be loaded.
-var ProjectID string
-
-// Force, if set, forcefully overwrite data in Firestore instead of failing if the documents already exist.
-var Force bool
-
-// DryRun, if true, will print the firestore objects to console rather than writing them to firestore.
-var DryRun bool
-
-func usage() {
-	cs := make([]string, len(Commands))
-	i := 0
-	for command := range Commands {
-		cs[i] = command
-		i++
-	}
-	sort.Strings(cs)
-	cstring := strings.Join(cs, "\n  ")
-	fmt.Fprintf(flag.CommandLine.Output(), `Usage: b1gtool [global-flags] <command>
-
-BTSTool: a command-line tool for managing B1G Pick 'Em Beat the Streak data and picks.
-
-Commands:
-  %s
-
-Global Flags:
-`, cstring)
-
-	flag.PrintDefaults()
+type globalCmd struct {
+	ProjectID string `help:"GCP project ID." env:"GCP_PROJECT" required:""`
+	DryRun    bool   `help:"Print database writes to log and exit without writing." xor:"Force,DryRun"`
+	Force     bool   `help:"Force overwriting or deleting data in database." xor:"Force,DryRun"`
 }
 
-// Commands are nullary functions that are run when commands (the keys of the map) are given as the first argument to the program.
-var Commands map[string]func() = make(map[string]func())
+var CLI struct {
+	globalCmd
 
-func init() {
-	flag.Usage = usage
+	Teams struct {
+		Add addTeamsCmd `cmd:"" help:"Add teams to competition."`
+		Rm  rmTeamsCmd  `cmd:"" help:"Remove teams from competition."`
+		Ls  lsTeamsCmd  `cmd:"" help:"List all teams in competition."`
+	} `cmd:""`
 
-	flag.StringVar(&ProjectID, "project", "", "Google Cloud Project ID.  If equal to the empty string, the environment variable GCP_PROJECT will be used.")
-	flag.BoolVar(&Force, "force", false, "Force overwrite of data in Firestore with the SET command rather than failing if the data already exists.")
-	flag.BoolVar(&DryRun, "dryrun", false, "Do not write to Firestore, but print to console instead.")
+	Streakers struct {
+		Activate   activateStreakersCmd   `cmd:"" help:"Activate streakers."`
+		Deactivate deactivateStreakersCmd `cmd:"" help:"Deactivate streakers."`
+		Ls         lsStreakersCmd         `cmd:"" help:"List all streakers."`
+	} `cmd:""`
+
+	WeekTypes setupWeeksCmd `cmd:"" help:"Setup week types available in competition."`
+
+	Pick makePickCmd `cmd:"" help:"Make streak picks."`
+
+	Status statusCmd `cmd:"" help:"Show status of all streaks."`
+
+	Simulate struct {
+		Anneal     annealCmd     `cmd:"" help:"Perform simulated annealing to approximate the best choice among all possible streaks."`
+		BruteForce bruteForceCmd `cmd:"" help:"Perform exhaustive search for the best choice over all possible streaks."`
+		Enumerate  enumerateCmd  `cmd:"" help:"Enumerate all possible streaks."`
+	}
 }
 
 func main() {
-	parseCommandLine()
-	cmd := flag.Arg(0)
-	c, ok := Commands[cmd]
-	if !ok {
-		flag.Usage()
-		log.Fatalf("Unrecognized command \"%s\"", cmd)
-	}
-	c()
-	log.Print("Done.")
-}
-
-func parseCommandLine() {
-	flag.Parse()
-
-	if flag.NArg() < 1 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	if flag.Arg(0) == "help" {
-		return
-	}
-
-	if ProjectID == "" {
-		ProjectID = os.Getenv("GCP_PROJECT")
-	}
-	if ProjectID == "" {
-		log.Fatal("Project ID flag not supplied and no GCP_PROJECT environment variable found")
-	}
+	ctx := kong.Parse(&CLI)
+	err := ctx.Run(&CLI.globalCmd)
+	ctx.FatalIfErrorf(err)
 }

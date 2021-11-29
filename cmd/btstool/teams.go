@@ -3,50 +3,69 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"strconv"
 	"strings"
 
-	"cloud.google.com/go/firestore"
+	fs "cloud.google.com/go/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/firestore"
 	bpefs "github.com/reallyasi9/b1gpickem/internal/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/tools/btsteams"
 )
 
-var teamsSeason int
-
-var teamsFlagSet *flag.FlagSet
-
-func init() {
-	teamsFlagSet = flag.NewFlagSet("setup-teams", flag.ExitOnError)
-	teamsFlagSet.SetOutput(flag.CommandLine.Output())
-	teamsFlagSet.Usage = teamsUsage
-
-	teamsFlagSet.IntVar(&teamsSeason, "season", -1, "Season year. Negative values will calculate season based on today's date.")
-
-	Commands["setup-teams"] = setupTeams
-	Usage["setup-teams"] = teamsUsage
+type addTeamsCmd struct {
+	Season    int      `arg:"" help:"Season to modify. If negative, the current season will be guessed based on today's date."`
+	Names     []string `arg:"" help:"Team other names to add to the competition."`
+	DoNotKeep bool     `help:"Remove all teams from competition that are not supplied to this command."`
 }
 
-func teamsUsage() {
-	w := flag.CommandLine.Output()
-	fmt.Fprint(w, `btstool [global-flags] setup-teams [flags] types team [team...]
+func (a *addTeamsCmd) Run(g *globalCmd) error {
+	ctx := btsteams.NewContext(context.Background())
+	ctx.DryRun = g.DryRun
+	ctx.Force = g.Force
+	var err error
+	ctx.FirestoreClient, err = fs.NewClient(ctx.Context, g.ProjectID)
+	if err != nil {
+		return err
+	}
+	ctx.Season = a.Season
+	ctx.TeamNames = a.Names
+	ctx.Append = !a.DoNotKeep
+	return btsteams.AddTeams(ctx)
+}
 
-Instantiate teams and pick types for a season's BTS competition.
+type rmTeamsCmd struct {
+	Season int      `arg:"" help:"Season to modify. If negative, the current season will be guessed based on today's date."`
+	Names  []string `arg:"" help:"Team other names to remove from the competition."`
+}
 
-Arguments:
-  types
-      A colon-separated list of numbers of pick types allowed for the season. The first element is the number of bye weeks, the second is the number of single picks, and so on.
-  team
-      A team (specified by other name) to add to the BTS competition. Multiple iterations are allowed.
+func (a *rmTeamsCmd) Run(g *globalCmd) error {
+	ctx := btsteams.NewContext(context.Background())
+	ctx.DryRun = g.DryRun
+	ctx.Force = g.Force
+	var err error
+	ctx.FirestoreClient, err = fs.NewClient(ctx.Context, g.ProjectID)
+	if err != nil {
+		return err
+	}
+	ctx.Season = a.Season
+	ctx.TeamNames = a.Names
+	return btsteams.RmTeams(ctx)
+}
 
-Flags:
-`)
+type lsTeamsCmd struct {
+	Season int `arg:"" help:"Season to list. If negative, the current season will be guessed based on today's date."`
+}
 
-	teamsFlagSet.PrintDefaults()
-
-	fmt.Fprint(flag.CommandLine.Output(), "\nGlobal Flags:\n")
-
-	flag.PrintDefaults()
+func (a *lsTeamsCmd) Run(g *globalCmd) error {
+	ctx := btsteams.NewContext(context.Background())
+	var err error
+	ctx.FirestoreClient, err = fs.NewClient(ctx.Context, g.ProjectID)
+	if err != nil {
+		return err
+	}
+	ctx.Season = a.Season
+	return btsteams.LsTeams(ctx)
 }
 
 func setupTeams() {
