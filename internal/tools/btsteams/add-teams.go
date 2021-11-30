@@ -50,7 +50,7 @@ func AddTeams(ctx *Context) error {
 	for typ, n := range season.StreakPickTypes {
 		nPicks += typ * n
 	}
-	if nPicks != len(teamsToAdd) {
+	if nPicks != len(teamsToAdd) && !ctx.Force {
 		return fmt.Errorf("AddTeams: number of teams (%d) not equal to number of streak picks calculated from week types (%d): explicitly override with --force argument", len(teamsToAdd), nPicks)
 	}
 
