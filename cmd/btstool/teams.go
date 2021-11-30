@@ -15,7 +15,7 @@ import (
 
 type addTeamsCmd struct {
 	Season    int      `arg:"" help:"Season to modify. If negative, the current season will be guessed based on today's date."`
-	Names     []string `arg:"" help:"Team other names to add to the competition."`
+	Name      []string `arg:"" help:"Team other name to add to the competition."`
 	DoNotKeep bool     `help:"Remove all teams from competition that are not supplied to this command."`
 }
 
@@ -29,14 +29,14 @@ func (a *addTeamsCmd) Run(g *globalCmd) error {
 		return err
 	}
 	ctx.Season = a.Season
-	ctx.TeamNames = a.Names
+	ctx.TeamNames = a.Name
 	ctx.Append = !a.DoNotKeep
 	return btsteams.AddTeams(ctx)
 }
 
 type rmTeamsCmd struct {
 	Season int      `arg:"" help:"Season to modify. If negative, the current season will be guessed based on today's date."`
-	Names  []string `arg:"" help:"Team other names to remove from the competition."`
+	Name   []string `arg:"" help:"Team other name to remove from the competition."`
 }
 
 func (a *rmTeamsCmd) Run(g *globalCmd) error {
@@ -49,7 +49,7 @@ func (a *rmTeamsCmd) Run(g *globalCmd) error {
 		return err
 	}
 	ctx.Season = a.Season
-	ctx.TeamNames = a.Names
+	ctx.TeamNames = a.Name
 	return btsteams.RmTeams(ctx)
 }
 

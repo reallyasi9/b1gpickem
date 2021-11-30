@@ -31,7 +31,7 @@ func ActivateStreakers(ctx *Context) error {
 			if _, converts := err.(firestore.NoStreakTeamsRemaining); !converts {
 				return fmt.Errorf("ActivateStreakers: failed to lookup streak teams remaining for streaker '%s' in week '%s' of season %d: %w", name, weekRef.ID, ctx.Season, err)
 			}
-			return fmt.Errorf("ActivateStreakers: picker '%s' already active in season %d", name, ctx.Season)
+			return fmt.Errorf("ActivateStreakers: picker '%s' already streaking in season %d", name, ctx.Season)
 		}
 		pickerRefs[ref] = struct{}{}
 	}
