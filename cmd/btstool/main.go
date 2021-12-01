@@ -29,11 +29,11 @@ var CLI struct {
 
 	Status statusCmd `cmd:"" help:"Show status of all streaks."`
 
-	Simulate struct {
-		Anneal     annealCmd     `cmd:"" help:"Perform simulated annealing to approximate the best choice among all possible streaks."`
-		BruteForce bruteForceCmd `cmd:"" help:"Perform exhaustive search for the best choice over all possible streaks."`
-		Enumerate  enumerateCmd  `cmd:"" help:"Enumerate all possible streaks."`
-	}
+	// Simulate struct {
+	// 	Anneal     annealCmd     `cmd:"" help:"Perform simulated annealing to approximate the best choice among all possible streaks."`
+	// 	BruteForce bruteForceCmd `cmd:"" help:"Perform exhaustive search for the best choice over all possible streaks."`
+	// 	Enumerate  enumerateCmd  `cmd:"" help:"Enumerate all possible streaks."`
+	// }
 }
 
 func main() {

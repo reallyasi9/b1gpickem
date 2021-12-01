@@ -36,6 +36,14 @@ func DeactivateStreakers(ctx *Context) error {
 				return fmt.Errorf("DeactivateStreakers: failed to get streak teams remaining for picker '%s' in season %d week '%s'", name, ctx.Season, weekRef.ID)
 			}
 			strRefs = append(strRefs, strRef)
+			_, spRef, err := firestore.GetStreakPick(ctx, weekRef, ref)
+			if err != nil {
+				if _, converts := err.(firestore.NoStreakPickError); converts {
+					continue
+				}
+				return fmt.Errorf("DeactivateStreakers: failed to get streak pick for picker '%s' in season %d week '%s'", name, ctx.Season, weekRef.ID)
+			}
+			strRefs = append(strRefs, spRef)
 		}
 		pickerRefs[ref.ID] = strRefs
 	}

@@ -31,20 +31,20 @@ func ActivateStreakers(ctx *Context) error {
 			if _, converts := err.(firestore.NoStreakTeamsRemaining); !converts {
 				return fmt.Errorf("ActivateStreakers: failed to lookup streak teams remaining for streaker '%s' in week '%s' of season %d: %w", name, weekRef.ID, ctx.Season, err)
 			}
-			return fmt.Errorf("ActivateStreakers: picker '%s' already streaking in season %d", name, ctx.Season)
 		}
 		pickerRefs[ref] = struct{}{}
 	}
 
 	strs := make(map[*fs.DocumentRef]firestore.StreakTeamsRemaining)
 	for pickerRef := range pickerRefs {
-		str, ref, err := firestore.GetStreakTeamsRemaining(ctx, seasonRef, nil, pickerRef)
+		str, _, err := firestore.GetStreakTeamsRemaining(ctx, seasonRef, nil, pickerRef)
 		if err != nil {
 			return fmt.Errorf("ActivateStreakers: failed to lookup streak teams remaining for streaker '%s' in week '%s' of season %d: %w", pickerRef.ID, weekRef.ID, ctx.Season, err)
 		}
 		if str.PickTypesRemaining == nil {
 			return fmt.Errorf("ActivateStreakers: refusing to activate streak for season %d when no week types are defined", ctx.Season)
 		}
+		ref := weekRef.Collection(firestore.STREAK_TEAMS_REMAINING_COLLECTION).Doc(pickerRef.ID)
 		strs[ref] = str
 	}
 

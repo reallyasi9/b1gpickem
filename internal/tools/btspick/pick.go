@@ -3,6 +3,7 @@ package btspick
 import (
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	fs "cloud.google.com/go/firestore"
@@ -34,7 +35,8 @@ func MakePicks(ctx *Context) error {
 			return fmt.Errorf("MakePicks: picker '%s' is not playing in season %d", picker, season.Year)
 		}
 
-		err = makeStreakPick(ctx, seasonRef, weekRef, nextWeekRef, pickerRef, picks)
+		picksArr := strings.Split(picks, ",")
+		err = makeStreakPick(ctx, seasonRef, weekRef, nextWeekRef, pickerRef, picksArr)
 		if err != nil {
 			return fmt.Errorf("MakePicks: unable to make streak pick of teams %v for picker '%s': %w", picks, picker, err)
 		}
@@ -57,6 +59,17 @@ func makeStreakPick(ctx *Context, season, weekFrom, weekTo, picker *fs.DocumentR
 	if err != nil {
 		return fmt.Errorf("makeStreakPick: unable to get streak teams remaining for picker '%s', week '%s': %w", picker.ID, weekFrom.ID, err)
 	}
+
+	// remove empty team names (bye week pick)
+	n := 0
+	for _, tn := range teamNames {
+		if tn == "" {
+			continue
+		}
+		teamNames[n] = tn
+		n++
+	}
+	teamNames = teamNames[:n]
 
 	nPicks := len(teamNames)
 	if len(str.PickTypesRemaining) < nPicks+1 || str.PickTypesRemaining[nPicks] <= 0 {

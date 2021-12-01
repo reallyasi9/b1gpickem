@@ -122,7 +122,7 @@ func GetStreakTeamsRemaining(ctx context.Context, season, week, picker *firestor
 		str.Picker = picker
 		str.PickTypesRemaining = se.StreakPickTypes
 		str.TeamsRemaining = se.StreakTeams
-		ref = week.Collection(STREAK_TEAMS_REMAINING_COLLECTION).NewDoc()
+		// ref = week.Collection(STREAK_TEAMS_REMAINING_COLLECTION).NewDoc()
 		return
 	}
 

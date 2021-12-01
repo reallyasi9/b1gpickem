@@ -1,4 +1,4 @@
-package btspick
+package btsstatus
 
 import (
 	"context"
@@ -10,12 +10,7 @@ type Context struct {
 	context.Context
 	FirestoreClient *fs.Client
 
-	Force  bool
-	DryRun bool
-
 	Season int
-	Week   int
-	Picks  map[string]string
 }
 
 func NewContext(ctx context.Context) *Context {

@@ -137,6 +137,26 @@ func GetStreakPick(ctx context.Context, weekRef, pickerRef *firestore.DocumentRe
 	return
 }
 
+// GetStreakPicks gets all pickers' BTS picks for a given week.
+func GetStreakPicks(ctx context.Context, weekRef *firestore.DocumentRef) (picks []StreakPick, refs []*firestore.DocumentRef, err error) {
+	snaps, err := weekRef.Collection(STREAK_PICKS_COLLECTION).Documents(ctx).GetAll()
+	if err != nil {
+		return
+	}
+	picks = make([]StreakPick, len(snaps))
+	refs = make([]*firestore.DocumentRef, len(snaps))
+	for i, snap := range snaps {
+		var sp StreakPick
+		if err = snap.DataTo(&sp); err != nil {
+			return
+		}
+		picks[i] = sp
+		refs[i] = snap.Ref
+	}
+
+	return
+}
+
 // BuildSlateRow fills out the remaining 4 cells for a pick in a slate.
 func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 	// game, instruction, pick, spread, notes, expected value
