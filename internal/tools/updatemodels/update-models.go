@@ -1,9 +1,8 @@
-package main
+package updatemodels
 
 import (
 	"bytes"
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -17,111 +16,57 @@ import (
 
 	fs "cloud.google.com/go/firestore"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
-// The subcommand update-modes the performance to date of the various prediction models from https://www.thepredictiontracker.com/ncaaresults.php.
+const PERF_URL = "https://www.thepredictiontracker.com/ncaaresults.php"
 
-// umFlagSet is a flag.FlagSet for parsing the update-models subcommand.
-var umFlagSet *flag.FlagSet
-
-// perfURL is the URL for model performance to date.
-var perfURL string
-
-// umUsage is the usage documentation for the update-models subcommand.
-func umUsage() {
-	fmt.Fprint(flag.CommandLine.Output(), `Usage: b1gtool [global-flags] update-models [flags] <season> <week>
-	
-Update model performance to date. Downloads data from thepredictiontracker.com.
-	
-Arguments:
-  season int
-      Year of games being updated.
-  week int
-      Week of games being updated.
-
-Flags:
-`)
-
-	umFlagSet.PrintDefaults()
-
-	fmt.Fprint(flag.CommandLine.Output(), "Global Flags:\n")
-
-	flag.PrintDefaults()
-
-}
-
-func init() {
-	umFlagSet = flag.NewFlagSet("update-models", flag.ExitOnError)
-	umFlagSet.SetOutput(flag.CommandLine.Output())
-	umFlagSet.Usage = umUsage
-
-	umFlagSet.StringVar(&perfURL, "perf", "https://www.thepredictiontracker.com/ncaaresults.php", "URL or file name of web site containing model performance to date.")
-
-	Commands["update-models"] = updateModels
-	Usage["update-models"] = umUsage
-}
-
-func updateModels() {
-	err := umFlagSet.Parse(flag.Args()[1:])
+func UpdateModels(ctx *Context) error {
+	models, refs, err := firestore.GetModels(ctx, ctx.FirestoreClient)
 	if err != nil {
-		log.Fatalf("Failed to parse update-models arguments: %v", err)
-	}
-
-	if umFlagSet.NArg() != 2 {
-		umFlagSet.Usage()
-		log.Fatal("Season and week arguments not supplied")
-	}
-	year := umFlagSet.Arg(0) // technically, strings are okay
-	week := umFlagSet.Arg(1)
-
-	ctx := context.Background()
-	fsClient, err := fs.NewClient(ctx, ProjectID)
-	if err != nil {
-		log.Fatalf("Error creating firestore client: %v", err)
-	}
-
-	models, refs, err := firestore.GetModels(ctx, fsClient)
-	if err != nil {
-		log.Fatalf("Error getting models: %v", err)
+		return fmt.Errorf("UpdateModels: Error getting models: %w", err)
 	}
 
 	lookup := firestore.NewModelRefsByShortName(models, refs)
 	slookup := firestore.NewModelRefsBySystem(models, refs)
 	rlookup := lookup.ReverseMap()
 
-	pt, err := newPerformanceTable(perfURL, slookup)
+	pt, err := newPerformanceTable(PERF_URL, slookup)
 	if err != nil {
-		log.Fatalf("Error parsing performance table: %v", err)
+		return fmt.Errorf("UpdateModels: Error parsing performance table: %w", err)
 	}
 
-	weekRef := fsClient.Collection(firestore.SEASONS_COLLECTION).Doc(year).Collection("weeks").Doc(week)
-	weekSS, err := weekRef.Get(ctx)
-	if err != nil {
-		log.Fatalf("Error getting week snapshot: %v", err)
+	year := strconv.Itoa(ctx.Season)
+	week := strconv.Itoa(ctx.Week)
+	weekRef := ctx.FirestoreClient.Collection(firestore.SEASONS_COLLECTION).Doc(year).Collection("weeks").Doc(week)
+	_, err = weekRef.Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return fmt.Errorf("UpdateModels: Week '%s' of season '%s' does not exist: run setup-season", week, year)
 	}
-	if !weekSS.Exists() {
-		log.Fatalf("Week '%s' of season '%s' does not exist: run setup-season", week, year)
+	if err != nil {
+		return fmt.Errorf("UpdateModels: Error getting week snapshot: %w", err)
 	}
 
 	now := time.Now()
-	perfRef := weekRef.Collection("model-performances").NewDoc()
+	perfRef := weekRef.Collection(firestore.MODEL_PERFORMANCES_COLLECTION).NewDoc()
 
-	if DryRun {
+	if ctx.DryRun {
 		log.Printf("DRY RUN: would write the following to %s:", perfRef.Path)
 		for _, p := range *pt {
 			log.Println(p)
 		}
-		return
+		return nil
 	}
 
-	err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
+	err = ctx.FirestoreClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
 		perfCollDoc := struct {
 			Timestamp time.Time `firestore:"timestamp"`
 		}{
 			Timestamp: now,
 		}
 		var err error
-		if Force {
+		if ctx.Force {
 			err = t.Set(perfRef, &perfCollDoc)
 		} else {
 			err = t.Create(perfRef, &perfCollDoc)
@@ -134,8 +79,8 @@ func updateModels() {
 			if !ok {
 				return fmt.Errorf("model short name for '%s' not in lookup table", p.Model.ID)
 			}
-			ref := perfRef.Collection("performances").Doc(name)
-			if Force {
+			ref := perfRef.Collection(firestore.PERFORMANCES_COLLECTION).Doc(name)
+			if ctx.Force {
 				err = t.Set(ref, &p)
 			} else {
 				err = t.Create(ref, &p)
@@ -148,8 +93,9 @@ func updateModels() {
 	})
 
 	if err != nil {
-		log.Fatalf("Unable to write model performances to firestore: %v", err)
+		return fmt.Errorf("UpdateModels: Unable to write model performances to firestore: %w", err)
 	}
+	return nil
 }
 
 type performanceTable []firestore.ModelPerformance

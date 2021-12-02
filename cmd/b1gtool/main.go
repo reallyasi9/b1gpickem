@@ -72,7 +72,17 @@ var CLI struct {
 	} `cmd:""`
 
 	Season struct {
-		Setup setupSeasonCmd `cmd:"" help:"Setup season."`
+		Setup     setupSeasonCmd `cmd:"" help:"Setup season."`
+		SplitWeek splitWeekCmd   `cmd:"" help:"Split week based on time of kickoff."`
+	} `cmd:""`
+
+	Models struct {
+		Update         updateModelsCmd   `cmd:"" help:"Update models."`
+		GetPredictions getPredictionsCmd `cmd:"" help:"Get model predictions."`
+		UpdateSagarin  updateSagarinCmd  `cmd:"" help:"Update Sagarin points."`
+		Add            addModelsCmd      `cmd:"" help:"Add new model information."`
+		Rm             rmModelsCmd       `cmd:"" help:"Remove model."`
+		Ls             lsModelsCmd       `cmd:"" help:"List all models."`
 	} `cmd:""`
 }
 

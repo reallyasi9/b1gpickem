@@ -1,9 +1,8 @@
-package main
+package updatemodels
 
 import (
 	"context"
 	"encoding/csv"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -17,107 +16,51 @@ import (
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
-// The subcommand update-predictions scrapes the individual model predictions for each game of the week from https://www.thepredictiontracker.com/ncaapredictions.csv.
-// Only a subset of games are predicted each week (games that have an opening Vegas line).
+const PRED_CSV = "https://www.thepredictiontracker.com/ncaapredictions.csv"
 
-// upFlagSet is a flag.FlagSet for parsing the update-predictions subcommand.
-var upFlagSet *flag.FlagSet
+func GetPredictions(ctx *Context) error {
 
-// predCSV is the URL for game predictions.
-var predCSV string
-
-// upUsage is the usage documentation for the update-predictions subcommand.
-func upUsage() {
-	fmt.Fprint(flag.CommandLine.Output(), `Usage: b1gtool [global-flags] update-predictions [flags] <season> <week>
-	
-Update predictions for games in Firestore. Downloads data from thepredictiontracker.com.
-	
-Arguments:
-  season int
-      Year of games being updated.
-  week int
-      Week of games being updated.
-
-Flags:
-`)
-
-	upFlagSet.PrintDefaults()
-
-	fmt.Fprint(flag.CommandLine.Output(), "\nGlobal Flags:\n")
-
-	flag.PrintDefaults()
-
-}
-
-func init() {
-	upFlagSet = flag.NewFlagSet("update-predictions", flag.ExitOnError)
-	upFlagSet.SetOutput(flag.CommandLine.Output())
-	upFlagSet.Usage = upUsage
-
-	upFlagSet.StringVar(&predCSV, "csv", "https://www.thepredictiontracker.com/ncaapredictions.csv", "URL or file name of CSV file containing model predictions.")
-
-	Commands["update-predictions"] = updatePredictions
-	Usage["update-predictions"] = upUsage
-}
-
-func updatePredictions() {
-	err := upFlagSet.Parse(flag.Args()[1:])
+	pt, err := newPredictionTable(PRED_CSV)
 	if err != nil {
-		log.Fatalf("Failed to parse update-predictions arguments: %v", err)
+		return fmt.Errorf("GetPredictions: Failed to read prediction table from CSV '%s': %w", PRED_CSV, err)
 	}
 
-	if upFlagSet.NArg() != 2 {
-		upFlagSet.Usage()
-		log.Fatal("Season and week arguments not supplied")
-	}
-	year := upFlagSet.Arg(0) // technically, strings are okay
-	week := upFlagSet.Arg(1)
-
-	pt, err := newPredictionTable(predCSV)
-	if err != nil {
-		log.Fatalf("Failed to read prediction table from CSV '%s': %v", predCSV, err)
-	}
-
-	ctx := context.Background()
-	fsClient, err := fs.NewClient(ctx, ProjectID)
-	if err != nil {
-		log.Fatalf("Failed to create firestore client: %v", err)
-	}
-
-	seasonRef := fsClient.Collection(firestore.SEASONS_COLLECTION).Doc(year)
+	year := strconv.Itoa(ctx.Season)
+	seasonRef := ctx.FirestoreClient.Collection(firestore.SEASONS_COLLECTION).Doc(year)
 	teams, refs, err := firestore.GetTeams(ctx, seasonRef)
 	if err != nil {
-		log.Fatalf("Failed to get teams: %v", err)
+		return fmt.Errorf("GetPredictions: Failed to get teams: %w", err)
 	}
 
 	teamLookup := firestore.NewTeamRefsByOtherName(teams, refs)
 	tps, err := pt.Matchups(teamLookup)
 	if err != nil {
-		log.Fatalf("Failed to match teams to refs: %v", err)
+		return fmt.Errorf("GetPredictions: Failed to match teams to refs: %w", err)
 	}
 
-	weekRef := seasonRef.Collection("weeks").Doc(week)
+	week := strconv.Itoa(ctx.Week)
+	weekRef := seasonRef.Collection(firestore.WEEKS_COLLECTION).Doc(week)
 	games, grefs, err := firestore.GetGames(ctx, weekRef)
 	if err != nil {
-		log.Fatalf("Failed to get games: %v", err)
+		return fmt.Errorf("GetPredictions: Failed to get games: %w", err)
 	}
 
-	models, mrefs, err := firestore.GetModels(ctx, fsClient)
+	models, mrefs, err := firestore.GetModels(ctx, ctx.FirestoreClient)
 	if err != nil {
-		log.Fatalf("Failed to get models: %v", err)
+		return fmt.Errorf("GetPredictions: Failed to get models: %w", err)
 	}
 
 	modelLookup := firestore.NewModelRefsByShortName(models, mrefs)
 	gameLookup := firestore.NewGameRefsByMatchup(games, grefs)
 	predictions, err := pt.GetWritablePredictions(gameLookup, modelLookup, tps, seasonRef)
 	if err != nil {
-		log.Fatalf("Failed making writable predictions: %v", err)
+		return fmt.Errorf("GetPredictions: Failed making writable predictions: %w", err)
 	}
 
-	if DryRun {
+	if ctx.DryRun {
 		log.Print("DRY RUN: would write the following:")
 		log.Print(predictions)
-		return
+		return nil
 	}
 
 	for i := 0; i < len(predictions); i += 500 {
@@ -126,9 +69,9 @@ func updatePredictions() {
 			ul = len(predictions)
 		}
 		subset := predictions[i:ul]
-		err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
+		err = ctx.FirestoreClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
 			for _, rp := range subset {
-				if Force {
+				if ctx.Force {
 					err := t.Set(rp.ref, &rp.pred)
 					if err != nil {
 						return err
@@ -144,9 +87,11 @@ func updatePredictions() {
 		})
 
 		if err != nil {
-			log.Fatalf("Writing to firestore failed: %v", err)
+			return fmt.Errorf("GetPredictions: Writing to firestore failed: %w", err)
 		}
 	}
+
+	return nil
 }
 
 // predictionTable collects the predictions for a set of models in a nice format.
@@ -179,7 +124,7 @@ func newPredictionTable(f string) (*predictionTable, error) {
 
 	record, err := csvr.Read()
 	if err != nil {
-		return nil, fmt.Errorf("error reading header from '%s': %v", f, err)
+		return nil, fmt.Errorf("error reading header from '%s': %w", f, err)
 	}
 	header, err := headerMap(record)
 	if err != nil {
@@ -208,7 +153,7 @@ func newPredictionTable(f string) (*predictionTable, error) {
 			case "neutral":
 				neu, err := strconv.ParseBool(val)
 				if err != nil {
-					return nil, fmt.Errorf("error parsing neutral site value '%s': %v", val, err)
+					return nil, fmt.Errorf("error parsing neutral site value '%s': %w", val, err)
 				}
 				neutral = append(neutral, neu)
 			default:
@@ -239,18 +184,6 @@ func newPredictionTable(f string) (*predictionTable, error) {
 		predictions: predictions,
 		missing:     missing,
 	}, nil
-}
-
-func request(client *http.Client, url string) (io.ReadCloser, error) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build request: %v", err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to do request: %v", err)
-	}
-	return resp.Body, nil
 }
 
 func headerMap(record []string) (map[string]int, error) {

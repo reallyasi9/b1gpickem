@@ -1,8 +1,7 @@
-package setupseason
+package updatemodels
 
 import (
 	"context"
-	"time"
 
 	fs "cloud.google.com/go/firestore"
 )
@@ -13,13 +12,10 @@ type Context struct {
 	DryRun          bool
 	Force           bool
 	FirestoreClient *fs.Client
-	ApiKey          string
 	Season          int
-	Weeks           []int
-	SplitWeek       int
-	SplitTimeFrom   time.Time
-	SplitTimeTo     time.Time
-	NewWeekNumber   int
+	Week            int
+	ModelNames      []string
+	SystemNames     []string
 }
 
 func NewContext(ctx context.Context) *Context {
