@@ -1,7 +1,6 @@
 package updatemodels
 
 import (
-	"context"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -69,22 +68,24 @@ func GetPredictions(ctx *Context) error {
 			ul = len(predictions)
 		}
 		subset := predictions[i:ul]
-		err = ctx.FirestoreClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
-			for _, rp := range subset {
-				if ctx.Force {
-					err := t.Set(rp.ref, &rp.pred)
-					if err != nil {
-						return err
-					}
-				} else {
-					err := t.Create(rp.ref, &rp.pred)
-					if err != nil {
-						return err
-					}
+		// err = ctx.FirestoreClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
+		for _, rp := range subset {
+			if ctx.Force {
+				// err := t.Set(rp.ref, &rp.pred)
+				_, err := rp.ref.Set(ctx, &rp.pred)
+				if err != nil {
+					return err
+				}
+			} else {
+				// err := t.Create(rp.ref, &rp.pred)
+				_, err := rp.ref.Create(ctx, &rp.pred)
+				if err != nil {
+					return err
 				}
 			}
-			return nil
-		})
+		}
+		// return nil
+		// })
 
 		if err != nil {
 			return fmt.Errorf("GetPredictions: Writing to firestore failed: %w", err)
@@ -223,6 +224,7 @@ type refPred struct {
 
 func (pt *predictionTable) GetWritablePredictions(g firestore.GameRefsByMatchup, modelLookup firestore.ModelRefsByName, ms []firestore.Matchup, season *fs.DocumentRef) ([]refPred, error) {
 	predictions := make([]refPred, 0)
+	seen := make(map[firestore.Matchup]struct{})
 	for i, tp := range ms {
 		gref, swap, wrongNeutral, ok := g.LookupCorrectMatchup(tp)
 		homeID := tp.Home
@@ -237,8 +239,14 @@ func (pt *predictionTable) GetWritablePredictions(g firestore.GameRefsByMatchup,
 		if wrongNeutral {
 			log.Printf("Game %s (%s v %s) has wrong neutral site flag (should be %t)", gref.ID, tp.Away, tp.Home, !tp.Neutral)
 		}
+		mu := firestore.Matchup{Home: homeID, Away: awayID, Neutral: tp.Neutral}
+		if _, ok := seen[mu]; ok {
+			log.Printf("Game %s (%s v %s) has already been seen!", gref.ID, tp.Away, tp.Home)
+			continue
+		}
+		seen[mu] = struct{}{}
 
-		col := gref.Collection("predictions")
+		col := gref.Collection(firestore.PREDICTIONS_COLLECTION)
 		for model := range pt.predictions {
 			if pt.missing[model][i] {
 				continue
@@ -250,8 +258,8 @@ func (pt *predictionTable) GetWritablePredictions(g firestore.GameRefsByMatchup,
 			p := pt.predictions[model][i]
 			mp := firestore.ModelPrediction{
 				Model:       mref,
-				HomeTeam:    season.Collection("teams").Doc(homeID),
-				AwayTeam:    season.Collection("teams").Doc(awayID),
+				HomeTeam:    season.Collection(firestore.TEAMS_COLLECTION).Doc(homeID),
+				AwayTeam:    season.Collection(firestore.TEAMS_COLLECTION).Doc(awayID),
 				NeutralSite: tp.Neutral != wrongNeutral,
 				Spread:      p,
 			}

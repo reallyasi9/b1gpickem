@@ -32,7 +32,7 @@ type getPredictionsCmd struct {
 	DryRun bool `help:"Print database writes to log and exit without writing."`
 	Force  bool `help:"Force overwrite or delete data from datastore."`
 	Season int  `arg:"" help:"Season ID to update." required:""`
-	Week   int  `help:"Week of update."`
+	Week   int  `arg:"" help:"Week of update." required:""`
 }
 
 func (a *getPredictionsCmd) Run(g *globalCmd) error {
@@ -53,7 +53,7 @@ type updateSagarinCmd struct {
 	DryRun bool `help:"Print database writes to log and exit without writing."`
 	Force  bool `help:"Force overwrite or delete data from datastore."`
 	Season int  `arg:"" help:"Season ID to update." required:""`
-	Week   int  `help:"Week of update."`
+	Week   int  `arg:"" help:"Week of update." required:""`
 }
 
 func (a *updateSagarinCmd) Run(g *globalCmd) error {
