@@ -6,6 +6,8 @@ import (
 	"io"
 
 	fs "cloud.google.com/go/firestore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Collection interface {
@@ -17,8 +19,12 @@ type Collection interface {
 	Len() int
 }
 
-// IterateWrite iterates the collection by `n` elements at a time and uses the given function to write to Firestore
-func IterateWrite(ctx context.Context, client *fs.Client, c Collection, n int, f func(*fs.Transaction, *fs.DocumentRef, interface{}) error) <-chan error {
+type TransactionIterator struct {
+	UpdateFcn func(*fs.Transaction, *fs.DocumentRef, interface{}) error
+}
+
+// IterateTransaction iterates the collection by `n` elements at a time and uses the given function to write to Firestore
+func (ti TransactionIterator) IterateTransaction(ctx context.Context, client *fs.Client, c Collection, n int) <-chan error {
 	out := make(chan error)
 
 	go func() {
@@ -29,10 +35,27 @@ func IterateWrite(ctx context.Context, client *fs.Client, c Collection, n int, f
 				ul = c.Len()
 			}
 			err := client.RunTransaction(ctx, func(ctx context.Context, tx *fs.Transaction) error {
+				// determine who is created and who is updated
+				creates := make(map[*fs.DocumentRef]interface{})
+				updates := make(map[*fs.DocumentRef]interface{})
 				for i := ll; i < ul; i++ {
 					ref := c.Ref(i)
 					datum := c.Datum(i)
-					if err := f(tx, ref, datum); err != nil {
+					if _, err := ref.Get(ctx); status.Code(err) == codes.NotFound {
+						creates[ref] = datum
+					} else {
+						updates[ref] = datum
+					}
+				}
+				for ref, datum := range creates {
+					err := tx.Create(ref, datum)
+					if err != nil {
+						return err
+					}
+				}
+				for ref, datum := range updates {
+					err := ti.UpdateFcn(tx, ref, datum)
+					if err != nil {
 						return err
 					}
 				}

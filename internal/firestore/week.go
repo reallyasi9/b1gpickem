@@ -29,6 +29,12 @@ func (w Week) String() string {
 	return sb.String()
 }
 
+type NoWeekError int
+
+func (e NoWeekError) Error() string {
+	return fmt.Sprintf("no week %d exists", e)
+}
+
 // GetWeek returns the week object and document ref pointer matching the given season document ref and week number.
 // If `week<0`, the week is calculated based on today's date and the week's `first_game_start` field.
 func GetWeek(ctx context.Context, season *firestore.DocumentRef, week int) (Week, *firestore.DocumentRef, error) {
@@ -46,7 +52,7 @@ func GetWeek(ctx context.Context, season *firestore.DocumentRef, week int) (Week
 		return w, nil, err
 	}
 	if len(docs) == 0 {
-		return w, nil, fmt.Errorf("no weeks defined for season %s", season.ID)
+		return w, nil, NoWeekError(week)
 	}
 	if err = docs[0].DataTo(&w); err != nil {
 		return w, nil, err

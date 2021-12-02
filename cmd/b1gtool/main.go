@@ -70,6 +70,10 @@ var CLI struct {
 	Teams struct {
 		Edit editTeamCmd `cmd:"" help:"Edit team."`
 	} `cmd:""`
+
+	Season struct {
+		Setup setupSeasonCmd `cmd:"" help:"Setup season."`
+	} `cmd:""`
 }
 
 func main() {

@@ -109,6 +109,30 @@ func (wc WeekCollection) Select(n int) (WeekCollection, bool) {
 	return WeekCollection{}, false
 }
 
+// Split splits a WeekCollection into two based on indices to include or exclude from the results.
+func (wc WeekCollection) Split(include []int) (in WeekCollection, out WeekCollection) {
+	includeMap := make(map[int]struct{})
+	for _, i := range include {
+		includeMap[i] = struct{}{}
+	}
+	in.ids = make(map[int64]int)
+	out.ids = make(map[int64]int)
+	for i := 0; i < wc.Len(); i++ {
+		if _, ok := includeMap[i]; ok {
+			in.fsWeeks = append(in.fsWeeks, wc.fsWeeks[i])
+			in.weeks = append(in.weeks, wc.weeks[i])
+			in.refs = append(in.refs, wc.refs[i])
+			in.ids[wc.weeks[i].Number] = i
+		} else {
+			out.fsWeeks = append(out.fsWeeks, wc.fsWeeks[i])
+			out.weeks = append(out.weeks, wc.weeks[i])
+			out.refs = append(out.refs, wc.refs[i])
+			out.ids[wc.weeks[i].Number] = i
+		}
+	}
+	return
+}
+
 func (wc WeekCollection) FprintDatum(w io.Writer, i int) (int, error) {
 	return fmt.Fprint(w, wc.fsWeeks[i].String())
 }
