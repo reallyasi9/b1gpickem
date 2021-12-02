@@ -84,6 +84,10 @@ var CLI struct {
 		Rm             rmModelsCmd       `cmd:"" help:"Remove model."`
 		Ls             lsModelsCmd       `cmd:"" help:"List all models."`
 	} `cmd:""`
+
+	Slate struct {
+		Parse parseSlateCmd `cmd:"" help:"Parse official slate."`
+	} `cmd:""`
 }
 
 func main() {
