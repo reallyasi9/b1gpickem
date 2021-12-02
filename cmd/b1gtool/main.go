@@ -88,6 +88,11 @@ var CLI struct {
 	Slate struct {
 		Parse parseSlateCmd `cmd:"" help:"Parse official slate."`
 	} `cmd:""`
+
+	Picks struct {
+		Pickem pickemCmd      `cmd:"" help:"Make picks."`
+		Export exportPicksCmd `cmd:"" help:"Export picks."`
+	}
 }
 
 func main() {

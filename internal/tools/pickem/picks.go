@@ -1,153 +1,88 @@
-package main
+package pickem
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"log"
+	"io"
 	"math"
-	"strconv"
+	"net/url"
+	"os"
 	"strings"
 
 	fs "cloud.google.com/go/firestore"
+	"cloud.google.com/go/storage"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
 	excelize "github.com/xuri/excelize/v2"
 )
 
-var exportFlags *flag.FlagSet
-
-// exportLocation is the location where to export the picks.
-var exportLocation string
-
-func init() {
-	cmd := "export-picks"
-
-	exportFlags = flag.NewFlagSet(cmd, flag.ExitOnError)
-	exportFlags.SetOutput(flag.CommandLine.Output())
-	exportFlags.Usage = exportUsage
-
-	exportFlags.StringVar(&exportLocation, "o", "", "The `location` where the slate will be exported in Excel format. If not given, prints picks to console. A Google Cloud Storage location can be specified with a gs:// prefix.")
-
-	Commands[cmd] = exportPicks
-	Usage[cmd] = exportUsage
-}
-
-func exportUsage() {
-	fmt.Fprintf(flag.CommandLine.Output(), `Usage: b1gtool [global-flags] export-picks [flags] <season> <week> <picker>
-
-Export a picker's weekly picks to file or Google Cloud Storage.
-
-Arguments:
-  season int
-      Season of picks to export. If less than zero, season will be guessed based on today's date.
-  week int
-      Week number of picks to export. If less than zero, week will be guessed based on today's date.
-  picker string
-      Short name of picker to export.
-	
-Flags:
-`)
-
-	exportFlags.PrintDefaults()
-
-	fmt.Fprint(flag.CommandLine.Output(), "\nGlobal Flags:\n")
-
-	flag.PrintDefaults()
-}
-
-func exportPicks() {
-	err := exportFlags.Parse(flag.Args()[1:])
+func ExportPicks(ctx *Context) error {
+	_, seasonRef, err := firestore.GetSeason(ctx, ctx.FirestoreClient, ctx.Season)
 	if err != nil {
-		log.Fatalf("Failed to parse export-picks arguments: %v", err)
+		return fmt.Errorf("ExportPicks: failed to get season %d: %w", ctx.Season, err)
 	}
-	if exportFlags.NArg() != 3 {
-		exportFlags.Usage()
-		log.Fatal("Season, week, and picker arguments required.")
-	}
-
-	season, err := strconv.Atoi(exportFlags.Arg(0))
+	_, weekRef, err := firestore.GetWeek(ctx, seasonRef, ctx.Week)
 	if err != nil {
-		exportFlags.Usage()
-		log.Fatalf("Cannot parse season as integer, '%s' given", exportFlags.Arg(0))
+		return fmt.Errorf("ExportPicks: failed to get week %d: %w", ctx.Week, err)
 	}
-	week, err := strconv.Atoi(exportFlags.Arg(1))
+	_, pickerRef, err := firestore.GetPickerByLukeName(ctx, ctx.FirestoreClient, ctx.Picker)
 	if err != nil {
-		exportFlags.Usage()
-		log.Fatalf("Cannot parse week as integer, '%s' given", exportFlags.Arg(1))
-	}
-	pickerName := exportFlags.Arg(2)
-
-	ctx := context.Background()
-	fsClient, err := fs.NewClient(ctx, ProjectID)
-	if err != nil {
-		log.Fatalf("Unable to create Firestore client: %v", err)
-	}
-
-	_, seasonRef, err := firestore.GetSeason(ctx, fsClient, season)
-	if err != nil {
-		log.Fatalf("Unable to get season %d: %v", season, err)
-	}
-	_, weekRef, err := firestore.GetWeek(ctx, seasonRef, week)
-	if err != nil {
-		log.Fatalf("Unable to get week %d: %v", week, err)
-	}
-	_, pickerRef, err := firestore.GetPickerByLukeName(ctx, fsClient, pickerName)
-	if err != nil {
-		log.Fatalf("Unable to get picker %s: %v", pickerName, err)
+		return fmt.Errorf("ExportPicks: failed to get picker %s: %w", ctx.Picker, err)
 	}
 
 	picks, picksRef, err := firestore.GetPicks(ctx, weekRef, pickerRef)
 	if err != nil {
-		log.Fatalf("Unable to get picks: %v", err)
+		return fmt.Errorf("ExportPicks: failed to get picks: %w", err)
 	}
 
 	btsPick, btsPickRef, err := firestore.GetStreakPick(ctx, weekRef, pickerRef)
 	if err != nil {
 		if _, ok := err.(firestore.NoStreakPickError); !ok {
-			log.Fatalf("Unable to get streak pick: %v", err)
+			return fmt.Errorf("ExportPicks: failed to get streak pick: %w", err)
 		}
 	}
 
 	// Make me some rows!
 	xl, err := makePicksExcelFile(ctx, picks, picksRef, btsPick, btsPickRef)
 	if err != nil {
-		log.Fatalf("Unable to make pick rows: %v", err)
+		return fmt.Errorf("ExportPicks: failed to make pick rows: %w", err)
 	}
 
 	// Figure out output location
-	if exportLocation == "" || DryRun {
+	if ctx.Output == "" || ctx.DryRun {
 		// no location? Print the rows to screen
 		sheetName := xl.GetSheetName(xl.GetActiveSheetIndex())
 		rows, err := xl.Rows(sheetName)
 		if err != nil {
-			log.Fatalf("Unable to get Excel row iterator: %v", err)
+			return fmt.Errorf("ExportPicks: failed to get Excel row iterator: %w", err)
 		}
 		for rows.Next() {
 			row, err := rows.Columns()
 			if err != nil {
-				log.Fatalf("Unable to get Excel cells from row iterator: %v", err)
+				return fmt.Errorf("ExportPicks: failed to get Excel cells from row iterator: %w", err)
 			}
 			fmt.Println(strings.Join(row, ", "))
 		}
-		return
+		return nil
 	}
 
-	writer, err := openFileOrGSWriter(ctx, exportLocation)
+	writer, err := openFileOrGSWriter(ctx, ctx.Output)
 	if err != nil {
-		log.Fatalf("Unable to open '%s': %v", exportLocation, err)
+		return fmt.Errorf("ExportPicks: failed to open '%s': %w", ctx.Output, err)
 	}
 	defer writer.Close()
 
 	_, err = xl.WriteTo(writer)
 	if err != nil {
-		log.Fatalf("Unable to write Excel file: %v", err)
+		return fmt.Errorf("ExportPicks: failed to write Excel file: %w", err)
 	}
+
+	return nil
 }
 
 func addRow(ctx context.Context, outExcel *excelize.File, sheetName string, row int, pick firestore.SlateRowBuilder) error {
 	out, err := pick.BuildSlateRow(ctx)
 	if err != nil {
-		return fmt.Errorf("failed making game output: %v", err)
+		return fmt.Errorf("failed making game output: %w", err)
 	}
 	for col, str := range out {
 		index, err := excelize.CoordinatesToCellName(col+1, row+1)
@@ -192,7 +127,7 @@ func makePicksExcelFile(ctx context.Context, picks []firestore.Pick, pickRefs []
 	for i, pick := range picks {
 		snap, err := pick.SlateGame.Get(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("unable to get SlateGame for pick: %v", err)
+			return nil, fmt.Errorf("unable to get SlateGame for pick: %w", err)
 		}
 		var sg firestore.SlateGame
 		if err = snap.DataTo(&sg); err != nil {
@@ -226,4 +161,35 @@ func makePicksExcelFile(ctx context.Context, picks []firestore.Pick, pickRefs []
 	}
 
 	return outExcel, nil
+}
+
+func openFileOrGSWriter(ctx context.Context, f string) (io.WriteCloser, error) {
+	u, err := url.Parse(f)
+	if err != nil {
+		return nil, err
+	}
+	var w io.WriteCloser
+	switch u.Scheme {
+	case "gs":
+		gsClient, err := storage.NewClient(ctx)
+		if err != nil {
+			return nil, err
+		}
+		bucket := gsClient.Bucket(u.Host)
+		obj := bucket.Object(u.Path)
+		w = obj.NewWriter(ctx)
+
+	case "file":
+		fallthrough
+	case "":
+		w, err = os.Create(u.Path)
+		if err != nil {
+			return nil, err
+		}
+
+	default:
+		return nil, fmt.Errorf("unable to determine how to open '%s'", f)
+	}
+
+	return w, nil
 }

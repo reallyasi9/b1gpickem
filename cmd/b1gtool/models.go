@@ -107,9 +107,7 @@ func (a *rmModelsCmd) Run(g *globalCmd) error {
 	if err != nil {
 		return err
 	}
-	for _, name := range a.Models {
-		ctx.ModelNames = append(ctx.ModelNames, name)
-	}
+	ctx.ModelNames = append(ctx.ModelNames, a.Models...)
 	return updatemodels.RmModels(ctx)
 }
 
