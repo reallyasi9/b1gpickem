@@ -2,133 +2,82 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
-	"os"
 	"sort"
-	"strconv"
 
 	fs "cloud.google.com/go/firestore"
+	"github.com/alecthomas/kong"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
-// suSystem holds the flag value of the system preferred for picking straight-up games.
-var suSystem string
-
-// nsSystem holds the flag value of the system preferred for picking noisy spread games.
-var nsSystem string
-
-// sdSystem holds the flag value of the system preferred for picking superdog games.
-var sdSystem string
-
-// fallback holds the flag value specifying whether to error out rather than use fallback systems for prediction.
-var fallback bool
-
-// dryRun holds the flag value specifying whether data should not be written to Firestore.
-var dryRun bool
-
-// force holds the flag value specifying whether data should be forcefully overwritten in Firestore.
-var force bool
-
-// projectID is the Google Cloud Storage project ID.
-var projectID string
-
-func usage() {
-	fmt.Fprintf(flag.CommandLine.Output(), `Usage: pickem4me [flags] <season> <week> <picker>
-	
-Records picks for a slate's games using predictions stored in Firestore.
-
-Arguments:
-  season (int)
-      Make picks for this season. If less than zero, the season will be guessed based on today's date.
-  week (int)
-      Make picks for this week. If less than zero, the week will be guessed based on today's date.
-  picker (string)
-      Register the picks to this picker. Also used to lookup the Beat the Streak picks.
-
-Flags:
-`)
-
-	flag.PrintDefaults()
-}
-
-func init() {
-	flag.Usage = usage
-
-	flag.StringVar(&suSystem, "su", "", "`System` to use for straight-up picks. System names begin with \"line\". If an empty string and \"-fallback\" is true, the system with the best straight-up prediction accuracy will be used, else an error is returned.")
-	flag.StringVar(&nsSystem, "ns", "", "`System` to use for noisy spread picks. System names begin with \"line\". If an empty string and \"-fallback\" is true, the system with the best mean squared error will be used, else an error is returned.")
-	flag.StringVar(&sdSystem, "sd", "", "`System` to use for superdog picks. System names begin with \"line\". If an empty string and \"-fallback\" is true, the system with the best mean squared error will be used, else an error is returned.")
-	flag.BoolVar(&fallback, "fallback", true, "If true, predictions missing for the various prediction systems will fall back on the best system available. If all else fails, Sagarin points will be used to predict a spread for the game.")
-	flag.BoolVar(&dryRun, "dryrun", false, "If true, log what would be written to Firestore, but do not write anything.")
-	flag.BoolVar(&force, "force", false, "If true, force overwrite exiting documents in Firestore.")
-	flag.StringVar(&projectID, "project", os.Getenv("GCP_PROJECT"), "Use the Firestore database from the given Google Cloud `Project`. Defaults to the environment variable GCP_PROJECT.")
+type CLI struct {
+	ProjectID        string `help:"GCP project ID." env:"GCP_PROJECT" required:""`
+	StraightUpModel  string `help:"Model to use for straight-up games. Default fallback is to use the model with the most straight-up wins to date." short:"s"`
+	NoisySpreadModel string `help:"Model to use for noisy-spread games. Default fallback is to use the straight-up model, otherwise the model with the smallest MAE to date." short:"n"`
+	SuperdogModel    string `help:"Model to use for superdog games. Default fallback is to use the noisy-spread model, otherwise the model with the smallest MAE to date." short:"d"`
+	Fallback         bool   `help:"Use fallback models when specified models are undefined."`
+	DryRun           bool   `help:"Print intended writes to log and exit without updating the database."`
+	Force            bool   `help:"Force overwrite data in the database."`
+	Season           int    `arg:"" help:"Season year." required:""`
+	Week             int    `arg:"" help:"Week number." required:""`
+	Picker           string `help:"Picker (for selecting BTS team, if available)."`
 }
 
 func main() {
-	flag.Parse()
+	var cli CLI
+	ctx := kong.Parse(&cli)
+	err := cli.Run()
+	ctx.FatalIfErrorf(err)
+}
 
+func (cli CLI) Run() error {
 	ctx := context.Background()
-	fsClient, err := fs.NewClient(ctx, projectID)
+	fsClient, err := fs.NewClient(ctx, cli.ProjectID)
 	if err != nil {
-		log.Fatalf("Unable to create Firestore client: %v", err)
+		return fmt.Errorf("failed to create Firestore client: %w", err)
 	}
 
-	if flag.NArg() != 3 {
-		flag.Usage()
-		log.Fatalf("Season, Week, and Picker arguments required.")
-	}
-	season, err := strconv.Atoi(flag.Arg(0))
+	_, pkRef, err := firestore.GetPickerByLukeName(ctx, fsClient, cli.Picker)
 	if err != nil {
-		flag.Usage()
-		log.Fatalf("Season '%s' not an integer.", flag.Arg(0))
-	}
-	week, err := strconv.Atoi(flag.Arg(1))
-	if err != nil {
-		flag.Usage()
-		log.Fatalf("Week '%s' not an integer.", flag.Arg(1))
-	}
-	picker := flag.Arg(2)
-	_, pkRef, err := firestore.GetPickerByLukeName(ctx, fsClient, picker)
-	if err != nil {
-		log.Fatalf("Unable to lookup picker '%s': %v", picker, err)
+		return fmt.Errorf("failed to lookup picker '%s': %w", cli.Picker, err)
 	}
 
-	_, seasonRef, err := firestore.GetSeason(ctx, fsClient, season)
+	_, seasonRef, err := firestore.GetSeason(ctx, fsClient, cli.Season)
 	if err != nil {
-		log.Fatalf("Unable to determine season from \"%d\": %v", season, err)
+		return fmt.Errorf("failed to determine season from %d: %w", cli.Season, err)
 	}
 	log.Printf("Using season %s", seasonRef.ID)
 
-	_, weekRef, err := firestore.GetWeek(ctx, seasonRef, week)
+	_, weekRef, err := firestore.GetWeek(ctx, seasonRef, cli.Week)
 	if err != nil {
-		log.Fatalf("Unable to determine week from \"%d\": %v", week, err)
+		return fmt.Errorf("failed to determine week from %d: %w", cli.Week, err)
 	}
 	log.Printf("Using week %s", weekRef.ID)
 
 	slateSSs, err := weekRef.Collection(firestore.SLATES_COLLECTION).OrderBy("parsed", fs.Desc).Limit(1).Documents(ctx).GetAll()
 	if err != nil {
-		log.Fatalf("Unable to get most recent slate from Firestore: %v", err)
+		return fmt.Errorf("failed to get most recent slate from Firestore: %w", err)
 	}
 	if len(slateSSs) < 1 {
-		log.Fatalf("No slates found in Firestore for season %s, week %s: have you run `b1gtool parse-slate` yet?", seasonRef.ID, weekRef.ID)
+		return fmt.Errorf("no slates found in Firestore for season %s, week %s: have you run `b1gtool slate parse` yet?", seasonRef.ID, weekRef.ID)
 	}
 
 	slateRef := slateSSs[0].Ref
 	sgss, err := slateRef.Collection(firestore.SLATE_GAMES_COLLECTION).Documents(ctx).GetAll()
 	if err != nil {
-		log.Fatalf("Unable to get games from slate at path \"%s\": %v", slateRef.Path, err)
+		return fmt.Errorf("failed to get games from slate at path '%s': %w", slateRef.Path, err)
 	}
-	log.Printf("Read %d games from slate at path \"%s\"", len(sgss), slateRef.Path)
+	log.Printf("Read %d games from slate at path '%s'", len(sgss), slateRef.Path)
 
 	perfs, _, err := firestore.GetMostRecentModelPerformances(ctx, fsClient, weekRef)
 	if err != nil {
-		log.Fatalf("Unable to get model performances: %v\nHave you run update-models?", err)
+		return fmt.Errorf("failed to get model performances: %w\nHave you run `b1gtool models update` yet?", err)
 	}
 
 	models, modelRefs, err := firestore.GetModels(ctx, fsClient)
 	if err != nil {
-		log.Fatalf("Unable to get model information: %v\nHave you run setup-model?", err)
+		return fmt.Errorf("failed to get model information: %w\nHave you run `b1gtool models setup` yet?", err)
 	}
 	modelLookup := firestore.NewModelRefsBySystem(models, modelRefs)
 
@@ -138,36 +87,36 @@ func main() {
 		var sgame firestore.SlateGame
 		err = ss.DataTo(&sgame)
 		if err != nil {
-			log.Fatalf("Unable to convert SlateGame at path \"%s\": %v", ss.Ref.Path, err)
+			return fmt.Errorf("failed to convert SlateGame at path '%s': %w", ss.Ref.Path, err)
 		}
 
 		gamess, err := sgame.Game.Get(ctx)
 		if err != nil {
-			log.Fatalf("Unable to get game at path \"%s\": %v", sgame.Game.Path, err)
+			return fmt.Errorf("failed to get game at path '%s': %w", sgame.Game.Path, err)
 		}
 		var game firestore.Game
 		err = gamess.DataTo(&game)
 		if err != nil {
-			log.Fatalf("Unable to convert Game at path \"%s\": %v", gamess.Ref.Path, err)
+			return fmt.Errorf("failed to convert Game at path '%s': %w", gamess.Ref.Path, err)
 		}
 
 		var modelChoice *fs.DocumentRef
 		var gt gameType
 		switch {
 		case sgame.NoisySpread != 0:
-			modelChoice = modelLookup[nsSystem]
+			modelChoice = modelLookup[cli.NoisySpreadModel]
 			gt = noisySpread
 		case sgame.Superdog:
-			modelChoice = modelLookup[sdSystem]
+			modelChoice = modelLookup[cli.SuperdogModel]
 			gt = superdog
 		default:
-			modelChoice = modelLookup[suSystem]
+			modelChoice = modelLookup[cli.StraightUpModel]
 			gt = straightUp
 		}
 
-		pick, err := pickEm(ctx, fsClient, ss.Ref, perfs, modelChoice, gt, fallback)
+		pick, err := pickEm(ctx, fsClient, ss.Ref, perfs, modelChoice, gt, cli.Fallback)
 		if err != nil {
-			log.Fatalf("Unable to pick Game \"%s\": %v", gamess.Ref.Path, err)
+			return fmt.Errorf("failed to pick Game '%s': %w", gamess.Ref.Path, err)
 		}
 		if gt == superdog {
 			// reverse superdog picks
@@ -199,7 +148,7 @@ func main() {
 	s, spRef, err := firestore.GetStreakPredictions(ctx, weekRef, pkRef)
 	if err != nil {
 		if _, ok := err.(firestore.NoStreakPickError); !ok {
-			log.Fatalf("Unable to lookup streak prediction for picker '%s': %v", picker, err)
+			return fmt.Errorf("failed to lookup streak prediction for picker '%s': %w", cli.Picker, err)
 		}
 	} else if spRef != nil {
 		sp = &firestore.StreakPick{
@@ -212,13 +161,13 @@ func main() {
 	}
 
 	// write what I have
-	if dryRun {
+	if cli.DryRun {
 		log.Print("DRY RUN: would write the following to Firestore")
 		for _, p := range picks {
 			log.Printf("%s", p)
 		}
 		log.Printf("Streak pick: %+v", sp)
-		return
+		return nil
 	}
 
 	picksCollection := weekRef.Collection(firestore.PICKS_COLLECTION)
@@ -229,7 +178,7 @@ func main() {
 		for _, pick := range picks {
 			pick.Picker = pkRef
 			pickRef := picksCollection.NewDoc()
-			if force {
+			if cli.Force {
 				err = t.Set(pickRef, &pick)
 			} else {
 				err = t.Create(pickRef, &pick)
@@ -243,7 +192,7 @@ func main() {
 			return err
 		}
 		spDoc := streaksCollection.NewDoc()
-		if force {
+		if cli.Force {
 			err = t.Set(spDoc, sp)
 		} else {
 			err = t.Create(spDoc, sp)
@@ -252,8 +201,11 @@ func main() {
 		return err
 	})
 
-	// TODO: output Excel file for submission
-	// TODO: write Excel file to Store?
+	if err != nil {
+		return fmt.Errorf("fialed running transaction: %w", err)
+	}
+
+	return nil
 }
 
 type gameType int
@@ -279,27 +231,27 @@ func pickEm(
 
 	ss, err := sg.Get(ctx)
 	if err != nil {
-		return p, fmt.Errorf("unable to get slate game \"%s\": %v", sg.Path, err)
+		return p, fmt.Errorf("unable to get slate game '%s': %w", sg.Path, err)
 	}
 	var sgame firestore.SlateGame
 	err = ss.DataTo(&sgame)
 	if err != nil {
-		return p, fmt.Errorf("unable to build SlateGame from \"%s\": %v", sg.Path, err)
+		return p, fmt.Errorf("unable to build SlateGame from '%s': %w", sg.Path, err)
 	}
 
 	predictions, predRefs, err := firestore.GetPredictions(ctx, fsClient, sgame.Game)
 	if err != nil {
-		return p, fmt.Errorf("unable to get predictions for slate game \"%s\": %v", sgame.Game.Path, err)
+		return p, fmt.Errorf("unable to get predictions for slate game '%s': %w", sgame.Game.Path, err)
 	}
 
 	ss, err = sgame.Game.Get(ctx)
 	if err != nil {
-		return p, fmt.Errorf("unable to get game \"%s\": %v", sgame.Game.Path, err)
+		return p, fmt.Errorf("unable to get game '%s': %w", sgame.Game.Path, err)
 	}
 	var game firestore.Game
 	err = ss.DataTo(&game)
 	if err != nil {
-		return p, fmt.Errorf("unable to build Game from \"%s\": %v", sgame.Game.Path, err)
+		return p, fmt.Errorf("unable to build Game from '%s': %w", sgame.Game.Path, err)
 	}
 
 	// If a specific choice is made, try to get that first.
@@ -329,14 +281,14 @@ func pickEm(
 		}
 	}
 	if !fallback {
-		return p, fmt.Errorf("no predictions for game \"%s\" and no fallback specified", sgame.Game.Path)
+		return p, fmt.Errorf("no predictions for game '%s' and no fallback specified", sgame.Game.Path)
 	}
 
 	// fallback onto best
 	log.Printf("Using fallback model to pick game %s", ss.Ref.ID)
 	pred, predRef, perf, err := getFallbackPrediction(ctx, predictions, predRefs, perfs, gt)
 	if err != nil {
-		return p, fmt.Errorf("unable to get fallback prediction: %v", err)
+		return p, fmt.Errorf("unable to get fallback prediction: %w", err)
 	}
 	p.FillOut(game, perf, pred, predRef, sgame.NoisySpread)
 
