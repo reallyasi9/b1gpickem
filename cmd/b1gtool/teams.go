@@ -11,7 +11,7 @@ import (
 type editTeamCmd struct {
 	DryRun       bool     `help:"Print database writes to log and exit without writing." xor:"Force,DryRun"`
 	Force        bool     `help:"Force overwriting or deleting data in database." xor:"Force,DryRun"`
-	Season       int      `help:"Season where team is defined." required:""`
+	Season       int      `arg:"" help:"Season where team is defined." required:""`
 	ID           string   `arg:"" help:"ID of team to edit." required:""`
 	Abbreviation string   `help:"Team 4-letter abbreviation."`
 	School       string   `help:"Team school name."`
@@ -45,4 +45,19 @@ func (a *editTeamCmd) Run(g *globalCmd) error {
 	}
 	ctx.Append = a.Append
 	return editteams.EditTeam(ctx)
+}
+
+type lsTeamsCmd struct {
+	Season int `arg:"" help:"Season where team is defined." required:""`
+}
+
+func (a *lsTeamsCmd) Run(g *globalCmd) error {
+	ctx := editteams.NewContext(context.Background())
+	var err error
+	ctx.FirestoreClient, err = fs.NewClient(ctx.Context, g.ProjectID)
+	if err != nil {
+		return err
+	}
+	ctx.Season = a.Season
+	return editteams.LsTeams(ctx)
 }
