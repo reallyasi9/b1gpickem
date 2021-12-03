@@ -45,7 +45,7 @@ var CLI struct {
 	Picks struct {
 		Pickem pickemCmd      `cmd:"" help:"Make picks."`
 		Export exportPicksCmd `cmd:"" help:"Export picks."`
-	}
+	} `cmd:""`
 }
 
 func main() {
