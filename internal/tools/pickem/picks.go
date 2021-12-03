@@ -178,7 +178,9 @@ func openFileOrGSWriter(ctx context.Context, f string) (io.WriteCloser, error) {
 			return nil, err
 		}
 		bucket := gsClient.Bucket(u.Host)
-		obj := bucket.Object(u.Path)
+		// URL path has leading slash, but GS expects path relative to bucket.
+		path := strings.TrimPrefix(u.Path, "/")
+		obj := bucket.Object(path)
 		w = obj.NewWriter(ctx)
 
 	case "file":
