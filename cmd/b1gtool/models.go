@@ -11,7 +11,7 @@ type updateModelsCmd struct {
 	DryRun bool `help:"Print database writes to log and exit without writing."`
 	Force  bool `help:"Force overwrite or delete data from datastore."`
 	Season int  `arg:"" help:"Season ID to update." required:""`
-	Week   int  `help:"Week of update."`
+	Week   int  `arg:"" help:"Week of update." required:""`
 }
 
 func (a *updateModelsCmd) Run(g *globalCmd) error {

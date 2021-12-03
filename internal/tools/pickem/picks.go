@@ -141,6 +141,8 @@ func makePicksExcelFile(ctx context.Context, picks []firestore.Pick, pickRefs []
 		} else {
 			if lastPickRow < 0 || sg.Row > lastPickRow {
 				lastPickRow = sg.Row
+				// in case there are no SDs!
+				firstSDRow = sg.Row + 1
 			}
 		}
 		if err = addRow(ctx, outExcel, sheetName, sg.Row, pick); err != nil {

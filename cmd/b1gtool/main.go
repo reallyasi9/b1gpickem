@@ -22,6 +22,7 @@ var CLI struct {
 
 	Teams struct {
 		Edit editTeamCmd `cmd:"" help:"Edit team."`
+		Ls   lsTeamsCmd  `cmd:"" help:"List teams."`
 	} `cmd:""`
 
 	Season struct {

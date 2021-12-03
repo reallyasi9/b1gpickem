@@ -132,15 +132,17 @@ func (cli CLI) Run() error {
 	}
 
 	// Pick dog by unpicking undogs. Huh.
-	sort.Sort(sort.Reverse(byValue(dogs)))
-	unpickedDogs := make(map[string]struct{})
-	for _, dog := range dogs[1:] {
-		unpickedDogs[dog.teamID] = struct{}{}
-	}
-	for i, p := range picks {
-		if _, ok := unpickedDogs[p.PickedTeam.ID]; ok {
-			p.PickedTeam = nil
-			picks[i] = p
+	if len(dogs) > 0 {
+		sort.Sort(sort.Reverse(byValue(dogs)))
+		unpickedDogs := make(map[string]struct{})
+		for _, dog := range dogs[1:] {
+			unpickedDogs[dog.teamID] = struct{}{}
+		}
+		for i, p := range picks {
+			if _, ok := unpickedDogs[p.PickedTeam.ID]; ok {
+				p.PickedTeam = nil
+				picks[i] = p
+			}
 		}
 	}
 

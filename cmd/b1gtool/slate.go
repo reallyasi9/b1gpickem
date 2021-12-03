@@ -11,8 +11,8 @@ type parseSlateCmd struct {
 	DryRun bool   `help:"Print database writes to log and exit without writing."`
 	Force  bool   `help:"Force overwrite or delete data from datastore."`
 	Season int    `arg:"" help:"Season of slate." required:""`
-	Week   int    `help:"Week of slate." required:""`
-	Slate  string `help:"Path to slate. Can be either a local path or a Google Storage URL starting with 'gs://'." required:""`
+	Week   int    `arg:"" help:"Week of slate." required:""`
+	Slate  string `arg:"" help:"Path to slate. Can be either a local path or a Google Storage URL starting with 'gs://'." required:""`
 }
 
 func (a *parseSlateCmd) Run(g *globalCmd) error {
