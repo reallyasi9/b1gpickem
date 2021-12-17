@@ -90,6 +90,11 @@ type OracleModel struct {
 func NewOracleModel(results []bpefs.Game) *OracleModel {
 	out := make(map[Game]float64)
 	for _, g := range results {
+		// Games that are not completed do not get added to the model.
+		if (g.HomePoints == nil) || (g.AwayPoints == nil) {
+			continue
+		}
+
 		ht := g.HomeTeam.ID
 		at := g.AwayTeam.ID
 		hl := Home
@@ -108,6 +113,7 @@ func NewOracleModel(results []bpefs.Game) *OracleModel {
 			team2:    Team(ht),
 			location: al,
 		}
+
 		out[hg] = float64(*g.HomePoints - *g.AwayPoints)
 		out[ag] = float64(*g.AwayPoints - *g.HomePoints)
 	}
