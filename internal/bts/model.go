@@ -163,3 +163,15 @@ func (m OracleModel) Predict(g *Game) (prob float64, spread float64) {
 	}
 	return
 }
+
+// String implements the Stringer interface.
+func (m OracleModel) String() string {
+	nGames := len(m.results)
+	uniqueTeams := make(map[Team]struct{})
+	for game := range m.results {
+		uniqueTeams[game.team1] = struct{}{}
+		uniqueTeams[game.team2] = struct{}{}
+	}
+	nTeams := len(uniqueTeams)
+	return fmt.Sprintf("OracleModel of %d teams playing %d games", nTeams, nGames)
+}

@@ -1,9 +1,14 @@
 package enumerate
 
 import (
+	"encoding/csv"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
+	"os"
+	"sort"
+	"strconv"
 	"sync"
 
 	"github.com/reallyasi9/b1gpickem/internal/bts"
@@ -45,7 +50,7 @@ func Enumerate(ctx *Context) error {
 
 	// Build the probability model
 	model := bts.NewOracleModel(allGames)
-	log.Printf("Built model %v", model)
+	log.Printf("Built model %s", model)
 
 	// Get schedule from most recent season
 	firstWeekNumber := weeks[0].Number
@@ -57,7 +62,7 @@ func Enumerate(ctx *Context) error {
 
 	// Make predictions for fast lookup
 	predictions := bts.MakePredictions(&schedule, *model)
-	// log.Printf("Made predictions\n%s", predictions)
+	log.Printf("Made predictions\n%s", predictions)
 
 	// Make default remaining teams
 	streakTeams := make(bts.Remaining, len(season.StreakTeams))
@@ -138,10 +143,22 @@ func Enumerate(ctx *Context) error {
 	close(streakSpreads)
 
 	log.Printf("Done")
-	fmt.Printf("Success by team:\n%v\n", successByTeam)
-	fmt.Printf("Spread by team:\n%v\n", spreadByTeam)
-	fmt.Printf("Success by week type:\n%v\n", successByWeekType)
-	fmt.Printf("Spread by week type:\n%v\n", spreadByWeekType)
+	fmt.Printf("Success by team (of %s valid streaks):\n", totalStreaks.String())
+	if err = successByTeam.CSV(os.Stdout); err != nil {
+		return fmt.Errorf("Enumerate: failed writing output: %w", err)
+	}
+	fmt.Printf("Spread by team (of %s valid streaks):\n", totalStreaks.String())
+	if err = spreadByTeam.CSV(os.Stdout); err != nil {
+		return fmt.Errorf("Enumerate: failed writing output: %w", err)
+	}
+	fmt.Printf("Success by week type (of %s valid streaks):\n", totalStreaks.String())
+	if err = successByWeekType.CSV(os.Stdout); err != nil {
+		return fmt.Errorf("Enumerate: failed writing output: %w", err)
+	}
+	fmt.Printf("Spread by week type (of %s valid streaks):\n", totalStreaks.String())
+	if err = spreadByWeekType.CSV(os.Stdout); err != nil {
+		return fmt.Errorf("Enumerate: failed writing output: %w", err)
+	}
 
 	return nil
 }
@@ -170,6 +187,41 @@ func (cm *teamWeekMatrix) Add(streak *bts.Streak, weight *big.Int) {
 	}
 }
 
+// CSV writes a CSV document to the given `io.Writer`
+func (cm *teamWeekMatrix) CSV(b io.Writer) error {
+	w := csv.NewWriter(b)
+
+	// sort teams
+	teams := make([]string, len(*cm))
+	i := 0
+	for team := range *cm {
+		teams[i] = string(team)
+		i++
+	}
+	sort.Strings(teams)
+	// print counts per week
+	record := []string{
+		"team",
+		"week",
+		"count",
+	}
+	if err := w.Write(record); err != nil {
+		return fmt.Errorf("making CSV header: %w", err)
+	}
+	for _, team := range teams {
+		record[0] = team
+		for week, count := range (*cm)[bts.Team(team)] {
+			record[1] = strconv.Itoa(week)
+			record[2] = count.String()
+			if err := w.Write(record); err != nil {
+				return fmt.Errorf("making CSV record: %w", err)
+			}
+		}
+	}
+	w.Flush()
+	return nil
+}
+
 type weekTypeMatrix [][]*big.Int
 
 func makeWeekTypeMatrix(weekTypes []int, weeks int) weekTypeMatrix {
@@ -190,6 +242,32 @@ func (cm *weekTypeMatrix) Add(streak *bts.Streak, weight *big.Int) {
 		bi := (*cm)[n][week]
 		bi.Add(bi, weight)
 	}
+}
+
+// CSV writes a CSV document to the given `io.Writer`
+func (cm *weekTypeMatrix) CSV(b io.Writer) error {
+	w := csv.NewWriter(b)
+
+	record := []string{
+		"picks",
+		"week",
+		"count",
+	}
+	if err := w.Write(record); err != nil {
+		return fmt.Errorf("making CSV header: %w", err)
+	}
+	for picks, counts := range *cm {
+		record[0] = strconv.Itoa(picks)
+		for week, count := range counts {
+			record[1] = strconv.Itoa(week)
+			record[2] = count.String()
+			if err := w.Write(record); err != nil {
+				return fmt.Errorf("making CSV record: %w", err)
+			}
+		}
+	}
+	w.Flush()
+	return nil
 }
 
 type streakSpread struct {
