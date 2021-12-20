@@ -173,5 +173,5 @@ func (m OracleModel) String() string {
 		uniqueTeams[game.team2] = struct{}{}
 	}
 	nTeams := len(uniqueTeams)
-	return fmt.Sprintf("OracleModel of %d teams playing %d games", nTeams, nGames)
+	return fmt.Sprintf("OracleModel of %d teams playing %d games", nTeams, nGames/2)
 }

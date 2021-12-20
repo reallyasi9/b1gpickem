@@ -95,7 +95,12 @@ func Enumerate(ctx *Context) error {
 
 	streakSpreads := make(chan streakSpread, 100)
 	go func(in <-chan streakSpread) {
-		bar := progressbar.NewOptions64(maxPermutations.Int64(), progressbar.OptionSetVisibility(!ctx.NoProgress))
+		var bar *progressbar.ProgressBar
+		if ctx.NoProgress {
+			bar = progressbar.NewOptions64(maxPermutations.Int64(), progressbar.OptionSetVisibility(!ctx.NoProgress))
+		} else {
+			bar = progressbar.Default(maxPermutations.Int64())
+		}
 		var best int64
 		one := big.NewInt(1)
 		for ss := range in {
