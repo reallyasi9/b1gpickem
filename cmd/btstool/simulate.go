@@ -57,5 +57,6 @@ func (a *enumerateCmd) Run(g *globalCmd) error {
 		return err
 	}
 	ctx.Season = a.Season
+	ctx.NoProgress = g.NoProgress
 	return enumerate.Enumerate(ctx)
 }

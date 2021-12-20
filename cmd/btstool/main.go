@@ -3,9 +3,10 @@ package main
 import "github.com/alecthomas/kong"
 
 type globalCmd struct {
-	ProjectID string `help:"GCP project ID." env:"GCP_PROJECT" required:""`
-	DryRun    bool   `help:"Print database writes to log and exit without writing." xor:"Force,DryRun"`
-	Force     bool   `help:"Force overwriting or deleting data in database." xor:"Force,DryRun"`
+	ProjectID  string `help:"GCP project ID." env:"GCP_PROJECT" required:""`
+	DryRun     bool   `help:"Print database writes to log and exit without writing." xor:"Force,DryRun"`
+	Force      bool   `help:"Force overwriting or deleting data in database." xor:"Force,DryRun"`
+	NoProgress bool   `help:"Do not report progress of long-running commands."`
 }
 
 var CLI struct {

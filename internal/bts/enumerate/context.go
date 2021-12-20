@@ -10,7 +10,8 @@ type Context struct {
 	context.Context
 	FirestoreClient *fs.Client
 
-	Season int
+	Season     int
+	NoProgress bool
 }
 
 func NewContext(ctx context.Context) *Context {
