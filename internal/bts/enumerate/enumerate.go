@@ -186,6 +186,9 @@ func (cm *teamWeekMatrix) Add(streak *bts.Streak, weight *big.Int) {
 	for i := 0; i < streak.NumWeeks(); i++ {
 		teams := streak.GetWeek(i)
 		for _, team := range teams {
+			if team == bts.NONE || team == bts.BYE {
+				continue
+			}
 			bi := (*cm)[team][i]
 			bi.Add(bi, weight)
 		}
