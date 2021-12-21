@@ -297,7 +297,7 @@ func anneal(ctx *Context, seed int64, worker int, p *bts.Player, predictions *bt
 	maxDrift := ctx.WanderLimit
 	countSinceReset := maxDrift
 
-	s := bts.NewStreak(p.RemainingTeams(), <-p.WeekTypeIterator())
+	s := bts.NewStreak(p.RemainingTeams(), p.WeekTypeIterator().Permutation())
 	bestS := s.Clone()
 	resetS := s.Clone()
 	bestExp := 0.

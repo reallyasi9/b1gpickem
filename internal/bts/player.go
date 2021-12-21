@@ -52,13 +52,13 @@ func (p Player) RemainingWeeks() int {
 }
 
 // RemainingIterator returns an iterator over remaining team indices.
-func (p Player) RemainingIterator() <-chan []int {
-	return NewIndexPermutor(len(p.remaining)).Iterator()
+func (p Player) RemainingIterator() *IndexPermutor {
+	return NewIndexPermutor(len(p.remaining))
 }
 
 // WeekTypeIterator returns an iterator over remaining week types.
-func (p Player) WeekTypeIterator() <-chan []int {
-	return p.weekTypes.Iterator()
+func (p Player) WeekTypeIterator() *IdenticalPermutor {
+	return p.weekTypes
 }
 
 // Remaining represents a player's teams remaining.

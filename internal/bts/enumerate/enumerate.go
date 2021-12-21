@@ -130,19 +130,21 @@ func Enumerate(ctx *Context) error {
 	}(streakSpreads)
 
 	var wg sync.WaitGroup
-	for streak := range weeksToStreaks(weekTypePermutor.Iterator(), streakTeams) {
+	for streak := range weeksToStreaks(weekTypePermutor, streakTeams) {
 		// Loop through the possible pick order
-		streakPermutor := bts.NewIndexPermutor(len(season.StreakTeams))
-		for streakOrder := range streakPermutor.Iterator() {
-			// Count the streak
-			wg.Add(1)
-			go func(streak *bts.Streak, streakOrder []int) {
-				streak.PermuteTeamOrder(streakOrder)
+		wg.Add(1)
+		go func(streak *bts.Streak) {
+			streakPermuter := bts.NewIndexPermutor(len(season.StreakTeams))
+			for streakPermuter.Permute() {
+				streak.PermuteTeamOrder(streakPermuter.Permutation())
 				prob, spread := bts.SummarizeStreak(predictions, streak)
-				streakSpreads <- streakSpread{streak: streak, spread: int64(spread), prob: prob}
-				wg.Done()
-			}(streak.Clone(), streakOrder)
-		}
+				if prob == 0 {
+					continue
+				}
+				streakSpreads <- streakSpread{streak: streak.Clone(), spread: int64(spread), prob: prob}
+			}
+			wg.Done()
+		}(streak)
 	}
 	wg.Wait()
 	close(streakSpreads)
@@ -284,10 +286,12 @@ type streakSpread struct {
 	spread int64
 }
 
-func weeksToStreaks(in <-chan []int, streakTeams bts.Remaining) chan *bts.Streak {
+func weeksToStreaks(ip *bts.IdenticalPermutor, streakTeams bts.Remaining) chan *bts.Streak {
 	out := make(chan *bts.Streak, 100)
 	go func() {
-		for weekTypes := range in {
+		for ip.Permute() {
+			weekTypes := make([]int, ip.Len())
+			copy(weekTypes, ip.Permutation())
 			out <- bts.NewStreak(streakTeams, weekTypes)
 		}
 		close(out)

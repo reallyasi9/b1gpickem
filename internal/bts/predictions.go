@@ -86,6 +86,12 @@ func SummarizeStreak(p *Predictions, s *Streak) (prob, spread float64) {
 		for _, pick := range picks {
 			prob *= p.GetProbability(pick, week)
 			spread += p.GetSpread(pick, week)
+
+			// Exit immediately upon failure to save some time.
+			if prob == 0 {
+				spread = 0
+				return
+			}
 		}
 	}
 
