@@ -55,3 +55,23 @@ func GetSeason(ctx context.Context, client *firestore.Client, year int) (Season,
 	}
 	return s, docs[0].Ref, nil
 }
+
+// GetSeasons gets all seasons
+func GetSeasons(ctx context.Context, client *firestore.Client) ([]Season, []*firestore.DocumentRef, error) {
+	snaps, err := client.Collection(SEASONS_COLLECTION).Documents(ctx).GetAll()
+	if err != nil {
+		return nil, nil, err
+	}
+	seasons := make([]Season, len(snaps))
+	refs := make([]*firestore.DocumentRef, len(snaps))
+	for i, snap := range snaps {
+		var s Season
+		err = snap.DataTo(&s)
+		if err != nil {
+			return nil, nil, err
+		}
+		seasons[i] = s
+		refs[i] = snap.Ref
+	}
+	return seasons, refs, nil
+}

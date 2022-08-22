@@ -39,7 +39,7 @@ func (p Player) RemainingTeamsRefs() []*firestore.DocumentRef {
 
 // RemainingWeekTypes returns the list of remaining week types.
 func (p Player) RemainingWeekTypes() []int {
-	return p.weekTypes.sets
+	return p.weekTypes.setSizes
 }
 
 // RemainingWeeks calculates the number of weeks of picks this player has remaining.
@@ -52,13 +52,13 @@ func (p Player) RemainingWeeks() int {
 }
 
 // RemainingIterator returns an iterator over remaining team indices.
-func (p Player) RemainingIterator() <-chan []int {
-	return NewIndexPermutor(len(p.remaining)).Iterator()
+func (p Player) RemainingIterator() *IndexPermutor {
+	return NewIndexPermutor(len(p.remaining))
 }
 
 // WeekTypeIterator returns an iterator over remaining week types.
-func (p Player) WeekTypeIterator() <-chan []int {
-	return p.weekTypes.Iterator()
+func (p Player) WeekTypeIterator() *IdenticalPermutor {
+	return p.weekTypes
 }
 
 // Remaining represents a player's teams remaining.
@@ -150,7 +150,7 @@ func (pm PlayerMap) Duplicates() map[string][]*Player {
 		for _, team := range player.remaining {
 			hash = jody.AddString64(hash, string(team))
 		}
-		for _, weektype := range player.weekTypes.sets {
+		for _, weektype := range player.weekTypes.setSizes {
 			hash = jody.AddUint64(hash, uint64(weektype))
 		}
 		playerHashes[hash] = append(playerHashes[hash], name)
@@ -182,5 +182,5 @@ func (pm PlayerMap) PlayerNames() []string {
 }
 
 func (p Player) String() string {
-	return fmt.Sprintf("%s: %v %v\n", p.Name(), p.RemainingTeams(), p.weekTypes.sets)
+	return fmt.Sprintf("%s: %v %v\n", p.Name(), p.RemainingTeams(), p.weekTypes.setSizes)
 }

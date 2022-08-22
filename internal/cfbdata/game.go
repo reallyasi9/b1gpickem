@@ -45,6 +45,18 @@ type GameCollection struct {
 	ids     map[int64]int
 }
 
+func (gc *GameCollection) Append(g GameCollection) {
+	n := len(gc.games)
+
+	gc.games = append(gc.games, g.games...)
+	gc.fsGames = append(gc.fsGames, g.fsGames...)
+	gc.refs = append(gc.refs, g.refs...)
+
+	for id, i := range g.ids {
+		gc.ids[id] = i + n
+	}
+}
+
 func GetAllGames(client *http.Client, key string, year int) (GameCollection, error) {
 	query := fmt.Sprintf("?year=%d", year)
 	body, err := DoRequest(client, key, "https://api.collegefootballdata.com/games"+query)

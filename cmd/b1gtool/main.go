@@ -1,84 +1,56 @@
 package main
 
 import (
-	"flag"
-	"fmt"
-	"log"
-	"os"
-	"sort"
-	"strings"
+	"github.com/alecthomas/kong"
 )
 
-// ProjectID is the Google Cloud Project ID where the season data will be loaded.
-var ProjectID string
-
-// Force, if set, forcefully overwrite data in Firestore instead of failing if the documents already exist.
-var Force bool
-
-// DryRun, if true, will print the firestore objects to console rather than writing them to firestore.
-var DryRun bool
-
-func usage() {
-	cs := make([]string, len(Commands))
-	i := 0
-	for command := range Commands {
-		cs[i] = command
-		i++
-	}
-	sort.Strings(cs)
-	cstring := strings.Join(cs, "\n  ")
-	fmt.Fprintf(flag.CommandLine.Output(), `Usage: b1gtool [global-flags] <command>
-
-B1GTool: a command-line tool for managing B1G Pick 'Em data and picks.
-
-Commands:
-  %s
-
-Global Flags:
-`, cstring)
-
-	flag.PrintDefaults()
+type globalCmd struct {
+	ProjectID string `help:"GCP project ID." env:"GCP_PROJECT" required:""`
 }
 
-// Commands are nullary functions that are run when commands (the keys of the map) are given as the first argument to the program.
-var Commands map[string]func() = make(map[string]func())
+var CLI struct {
+	globalCmd
 
-func init() {
-	flag.Usage = usage
+	Pickers struct {
+		Add        addPickersCmd        `cmd:"" help:"Add pickers."`
+		Rm         rmPickersCmd         `cmd:"" help:"Remove pickers."`
+		Ls         lsPickersCmd         `cmd:"" help:"List all pickers."`
+		Edit       editPickerCmd        `cmd:"" help:"Edit picker."`
+		Activate   activatePickersCmd   `cmd:"" help:"Activate pickers for a season."`
+		Deactivate deactivatePickersCmd `cmd:"" help:"Deactivate pickers for a season."`
+	} `cmd:""`
 
-	flag.StringVar(&ProjectID, "project", "", "Google Cloud Project ID.  If equal to the empty string, the environment variable GCP_PROJECT will be used.")
-	flag.BoolVar(&Force, "force", false, "Force overwrite of data in Firestore with the SET command rather than failing if the data already exists.")
-	flag.BoolVar(&DryRun, "dryrun", false, "Do not write to firestore, but print to console instead.")
+	Teams struct {
+		Edit editTeamCmd `cmd:"" help:"Edit team."`
+		Ls   lsTeamsCmd  `cmd:"" help:"List teams."`
+	} `cmd:""`
+
+	Season struct {
+		Setup     setupSeasonCmd `cmd:"" help:"Setup season."`
+		SplitWeek splitWeekCmd   `cmd:"" help:"Split week based on time of kickoff."`
+	} `cmd:""`
+
+	Models struct {
+		Update         updateModelsCmd   `cmd:"" help:"Update models."`
+		GetPredictions getPredictionsCmd `cmd:"" help:"Get model predictions."`
+		UpdateSagarin  updateSagarinCmd  `cmd:"" help:"Update Sagarin points."`
+		Add            addModelsCmd      `cmd:"" help:"Add new model information."`
+		Rm             rmModelsCmd       `cmd:"" help:"Remove model."`
+		Ls             lsModelsCmd       `cmd:"" help:"List all models."`
+	} `cmd:""`
+
+	Slate struct {
+		Parse parseSlateCmd `cmd:"" help:"Parse official slate."`
+	} `cmd:""`
+
+	Picks struct {
+		Pickem pickemCmd      `cmd:"" help:"Make picks."`
+		Export exportPicksCmd `cmd:"" help:"Export picks."`
+	} `cmd:""`
 }
 
 func main() {
-	parseCommandLine()
-	cmd := flag.Arg(0)
-	c, ok := Commands[cmd]
-	if !ok {
-		flag.Usage()
-		log.Fatalf("Unrecognized command \"%s\"", cmd)
-	}
-	c()
-	log.Print("Done.")
-}
-
-func parseCommandLine() {
-	flag.Parse()
-
-	if flag.NArg() < 1 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	if flag.Arg(0) == "help" {
-		return
-	}
-
-	if ProjectID == "" {
-		ProjectID = os.Getenv("GCP_PROJECT")
-	}
-	if ProjectID == "" {
-		log.Fatal("Project ID flag not supplied and no GCP_PROJECT environment variable found")
-	}
+	ctx := kong.Parse(&CLI)
+	err := ctx.Run(&CLI.globalCmd)
+	ctx.FatalIfErrorf(err)
 }
