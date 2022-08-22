@@ -13,3 +13,25 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+cmd/b1gtool/b1gtool
+cmd/pickem4me/pickem4me
+cmd/btstool/btstool
+
+.vscode
+
+# Firebase logs
+firebase-debug.log*
+firebase-debug.*.log*
+firestore-debug.log*
+firestore-debug.*.log*
+ui-debug*.log*
+
+# Firebase cache
+.firebase/
+firebase-data/
+
+# Firebase config
+.firebaserc
+firebase.json
+
+*.xlsx
