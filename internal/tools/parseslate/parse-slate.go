@@ -1,8 +1,7 @@
-package main
+package parseslate
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -19,97 +18,34 @@ import (
 	"github.com/tealeg/xlsx"
 )
 
-// slateFlagSet is a flag.FlagSet for parsing the parse-slate subcommand.
-var slateFlagSet *flag.FlagSet
+func ParseSlate(ctx *Context) error {
 
-// slateSeason is the season the slate occurs in.
-var slateSeason int
-
-// slateWeek is the week the slate occurs in.
-var slateWeek int
-
-// slateUsage is the usage documentation for the parse-slate subcommand.
-func slateUsage() {
-	fmt.Fprintf(flag.CommandLine.Output(), `Usage: b1gtool [global-flags] parse-slate [flags] <slate>
-	
-Parse the weekly Pick'Em slate.
-
-Arguments:
-  slate string
-      File name of slate to parse. To specify a Google Cloud Storage location, specify a URL with a "gs://" scheme.
-	
-Flags:
-`)
-
-	slateFlagSet.PrintDefaults()
-
-	fmt.Fprint(flag.CommandLine.Output(), "\nGlobal Flags:\n")
-
-	flag.PrintDefaults()
-
-}
-
-func init() {
-	cmd := "parse-slate"
-
-	slateFlagSet = flag.NewFlagSet(cmd, flag.ExitOnError)
-	slateFlagSet.SetOutput(flag.CommandLine.Output())
-	slateFlagSet.Usage = slateUsage
-
-	slateFlagSet.IntVar(&slateSeason, "season", -1, "The `season` to which the slate belongs. If negative, the most recent season will be used.")
-	slateFlagSet.IntVar(&slateWeek, "week", -1, "The `week` to which the slate belongs. If negative, the week will be calculated based on the season start_time and today's date.")
-
-	Commands[cmd] = parseSlate
-	Usage[cmd] = slateUsage
-}
-
-func parseSlate() {
-	err := slateFlagSet.Parse(flag.Args()[1:])
+	reader, err := getFileOrGSReader(ctx, ctx.Slate)
 	if err != nil {
-		log.Fatalf("Failed to parse parse-slate arguments: %v", err)
-	}
-	if slateFlagSet.NArg() == 0 {
-		slateFlagSet.Usage()
-		log.Fatal("No slate given")
-	}
-	if slateFlagSet.NArg() > 1 {
-		slateFlagSet.Usage()
-		log.Fatal("Too many arguments given")
-	}
-	slateLocation := slateFlagSet.Arg(0)
-
-	ctx := context.Background()
-	reader, err := getFileOrGSReader(ctx, slateLocation)
-	if err != nil {
-		log.Fatalf("Unable to open '%s': %v", slateLocation, err)
+		return fmt.Errorf("ParseSlate: failed to open '%s': %w", ctx.Slate, err)
 	}
 	defer reader.Close()
 
-	fsClient, err := fs.NewClient(ctx, ProjectID)
+	_, seasonRef, err := firestore.GetSeason(ctx, ctx.FirestoreClient, ctx.Season)
 	if err != nil {
-		log.Fatalf("Unable to create firestore client: %v", err)
+		return fmt.Errorf("ParseSlate: failed to get season: %w", err)
 	}
 
-	_, seasonRef, err := firestore.GetSeason(ctx, fsClient, slateSeason)
+	_, weekRef, err := firestore.GetWeek(ctx, seasonRef, ctx.Week)
 	if err != nil {
-		log.Fatalf("Unable to get season: %v", err)
-	}
-
-	_, weekRef, err := firestore.GetWeek(ctx, seasonRef, slateWeek)
-	if err != nil {
-		log.Fatalf("Unable to get week: %v", err)
+		return fmt.Errorf("ParseSlate: failed to get week: %w", err)
 	}
 
 	games, gameRefs, err := firestore.GetGames(ctx, weekRef)
 	if err != nil {
-		log.Fatalf("Unable to get games: %v", err)
+		return fmt.Errorf("ParseSlate: failed to get games: %w", err)
 	}
 
 	gl := firestore.NewGameRefsByMatchup(games, gameRefs)
 
 	teams, teamRefs, err := firestore.GetTeams(ctx, seasonRef)
 	if err != nil {
-		log.Fatalf("Unable to get teams: %v", err)
+		return fmt.Errorf("ParseSlate: failed to get teams: %w", err)
 	}
 
 	tlOther := firestore.NewTeamRefsByOtherName(teams, teamRefs)
@@ -117,34 +53,34 @@ func parseSlate() {
 
 	slurp, err := io.ReadAll(reader)
 	if err != nil {
-		log.Fatalf("Unable to read slate file: %v", err)
+		return fmt.Errorf("ParseSlate: failed to read slate file: %w", err)
 	}
 
 	sgames, err := parseSheet(slurp, tlOther, tlShort, gl)
 	if err != nil {
-		log.Fatalf("Unable to parse games from slate file: %v", err)
+		return fmt.Errorf("ParseSlate: failed to parse games from slate file: %w", err)
 	}
 
-	if DryRun {
+	if ctx.DryRun {
 		log.Print("DRY RUN: would write the following to firestore:")
 		for _, g := range sgames {
 			log.Printf("%s", g)
 		}
-		return
+		return nil
 	}
 
-	ct, err := getCreationTime(ctx, slateLocation)
+	ct, err := getCreationTime(ctx, ctx.Slate)
 	if err != nil {
-		log.Fatalf("Unable to stat time from file: %v", err)
+		return fmt.Errorf("ParseSlate: failed to stat time from file: %w", err)
 	}
 	slate := firestore.Slate{
 		Created:  ct,
-		FileName: slateLocation,
+		FileName: ctx.Slate,
 	}
 	slateRef := weekRef.Collection(firestore.SLATES_COLLECTION).NewDoc()
-	err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
+	err = ctx.FirestoreClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
 		var err error
-		if Force {
+		if ctx.Force {
 			err = t.Set(slateRef, &slate)
 		} else {
 			err = t.Create(slateRef, &slate)
@@ -156,7 +92,7 @@ func parseSlate() {
 		for _, game := range sgames {
 			gameID := game.Game.ID // convenient
 			gameRef := slateRef.Collection(firestore.SLATE_GAMES_COLLECTION).Doc(gameID)
-			if Force {
+			if ctx.Force {
 				err = t.Set(gameRef, &game)
 			} else {
 				err = t.Create(gameRef, &game)
@@ -170,8 +106,10 @@ func parseSlate() {
 	})
 
 	if err != nil {
-		log.Fatalf("Unable to store slate and games in firestore: %v", err)
+		return fmt.Errorf("ParseSlate: failed to store slate and games in firestore: %w", err)
 	}
+
+	return nil
 }
 
 func getFileOrGSReader(ctx context.Context, f string) (io.ReadCloser, error) {

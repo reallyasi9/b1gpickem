@@ -1,8 +1,6 @@
-package main
+package sa
 
 import (
-	"context"
-	"flag"
 	"fmt"
 	"log"
 	"math"
@@ -31,95 +29,31 @@ func (a ByProbDesc) Less(i, j int) bool {
 }
 func (a ByProbDesc) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
-// btsMCFlagSet is a flag.FlagSet for parsing the bts-mc subcommand.
-var btsMCFlagSet *flag.FlagSet
-
-var seasonFlag int
-var weekFlag int
-var maxItr int
-var tC float64
-var tE float64
-var resetItr int
-var seed int64
-var workers int
-var doAll bool
-
-// btsMCUsage is the usage documentation for the bts-mc subcommand.
-func btsMCUsage() {
-	fmt.Fprintf(flag.CommandLine.Output(), `Usage: btstool [global-flags] bts-sa [flags] [picker [picker ...]]
-	
-Run simulated anealing simulation of BTS streaks.
-
-Arguments:
-  picker string
-      Picker to simulate. Multiple pickers can be specified.
-
-Flags:
-`)
-
-	btsMCFlagSet.PrintDefaults()
-
-	fmt.Fprint(flag.CommandLine.Output(), "\nGlobal Flags:\n")
-
-	flag.PrintDefaults()
-
-}
-
-func init() {
-	btsMCFlagSet = flag.NewFlagSet("bts-sa", flag.ExitOnError)
-	btsMCFlagSet.SetOutput(flag.CommandLine.Output())
-	btsMCFlagSet.Usage = btsMCUsage
-
-	btsMCFlagSet.IntVar(&seasonFlag, "season", -1, "Season year. Negative values will calculate season based on today's date.")
-	btsMCFlagSet.IntVar(&weekFlag, "week", -1, "Week number. Negative values will calculate week number based on today's date.")
-	btsMCFlagSet.IntVar(&maxItr, "maxi", 100000000, "Number of simulated annealing iterations per worker.")
-	btsMCFlagSet.Float64Var(&tC, "tc", 1., "Simulated annealing temperature constant: p = (tc * (maxi - i) / maxi)^te.")
-	btsMCFlagSet.Float64Var(&tE, "te", 3., "Simulated annealing temperature exponent: p = (tc * (maxi - i) / maxi)^te.")
-	btsMCFlagSet.IntVar(&resetItr, "reseti", 10000, "Maximum number of iterations to allow simulated annealing solution to wonder before resetting to best solution found so far.")
-	btsMCFlagSet.Int64Var(&seed, "seed", -1, "Seed for RNG governing simulated annealing process. Negative values will use system clock to seed RNG.")
-	btsMCFlagSet.IntVar(&workers, "workers", 1, "Number of workers per simulated picker. Increases odds of finding the global maximum.")
-	btsMCFlagSet.BoolVar(&doAll, "all", false, "Ignore picker list and simulate all registered pickers still in the streak.")
-
-	Commands["bts-sa"] = btsMC
-	Usage["bts-sa"] = btsMCUsage
-}
-
-func btsMC() {
-	err := btsMCFlagSet.Parse(flag.Args()[1:])
-	if err != nil {
-		log.Fatalf("Failed to parse bts-mc arguments: %v", err)
-	}
-
+func Anneal(ctx *Context) error {
 	log.Print("Beating the streak")
 
-	ctx := context.Background()
-	pickers := btsMCFlagSet.Args()
-	log.Printf("Beating the streak, pickers %s", pickers)
-	weekNumber := weekFlag
+	pickers := ctx.Streakers
+	log.Printf("Beating the streak with streakers %s", pickers)
+	weekNumber := ctx.Week
 	pickerNames := pickers
 
-	if len(pickerNames) == 0 && !doAll {
-		btsMCFlagSet.Usage()
-		log.Fatal("Must supply at least one streaker if -all not set.")
+	if len(pickerNames) == 0 && !ctx.All {
+		return fmt.Errorf("Anneal: must supply at least one streaker if --all not set")
 	}
 
-	fs, err := firestore.NewClient(ctx, ProjectID)
-	if err != nil {
-		log.Print(err)
-		log.Fatalf("Check that the project ID \"%s\" is correctly specified (either the -project flag or the GCP_PROJECT environment variable)", ProjectID)
-	}
+	fs := ctx.FirestoreClient
 
 	// Get season
-	season, seasonRef, err := bpefs.GetSeason(ctx, fs, seasonFlag)
+	season, seasonRef, err := bpefs.GetSeason(ctx, fs, ctx.Season)
 	if err != nil {
-		log.Fatalf("Unable to get season: %v", err)
+		return fmt.Errorf("Anneal: unable to get season: %v", err)
 	}
 	log.Printf("season discovered: %s", seasonRef.ID)
 
 	// Get week
-	_, weekRef, err := bpefs.GetWeek(ctx, seasonRef, weekFlag)
+	_, weekRef, err := bpefs.GetWeek(ctx, seasonRef, weekNumber)
 	if err != nil {
-		log.Fatalf("Unable to get week: %v", err)
+		return fmt.Errorf("Anneal: unable to get week: %v", err)
 	}
 	log.Printf("week discovered: %s", weekRef.ID)
 
@@ -128,14 +62,14 @@ func btsMC() {
 	sagPointsRef := weekRef.Collection("team-points").Doc("sagarin")
 	sagSnaps, err := sagPointsRef.Collection("linesag").Documents(ctx).GetAll()
 	if err != nil {
-		log.Fatalf("Unable to get sagarin ratings: %v", err)
+		return fmt.Errorf("Anneal: unable to get sagarin ratings: %v", err)
 	}
 	sagarinRatings := make(map[string]bpefs.ModelTeamPoints)
 	for _, s := range sagSnaps {
 		var sag bpefs.ModelTeamPoints
 		err = s.DataTo(&sag)
 		if err != nil {
-			log.Fatalf("Unable to get sagarin rating: %v", err)
+			return fmt.Errorf("Anneal: unable to get sagarin rating: %v", err)
 		}
 		// Sagarin has one nil team representing a non-recorded team. Don't keep that one.
 		if sag.Team == nil {
@@ -148,14 +82,14 @@ func btsMC() {
 	// Get the streakers for this week
 	pickerMap, _, err := bpefs.GetRemainingStreaks(ctx, seasonRef, weekRef)
 	if err != nil {
-		log.Fatalf("Unable to get remaining streaks: %v", err)
+		return fmt.Errorf("Anneal: unable to get remaining streaks: %v", err)
 	}
 	log.Printf("pickers loaded: %+v", pickerMap)
-	if !doAll {
+	if !ctx.All {
 		foundPickers := make(map[string]struct{})
 		for _, name := range pickerNames {
 			if _, ok := pickerMap[name]; !ok {
-				log.Fatalf("Picker '%s' does not have an active streak.", name)
+				return fmt.Errorf("Anneal: picker '%s' does not have an active streak", name)
 			}
 			foundPickers[name] = struct{}{}
 		}
@@ -172,7 +106,7 @@ func btsMC() {
 	// Get most recent performances for sagarin
 	performances, performanceRefs, err := bpefs.GetMostRecentModelPerformances(ctx, fs, weekRef)
 	if err != nil {
-		log.Fatalf("Unable to get model performances: %v", err)
+		return fmt.Errorf("Anneal: unable to get model performances: %v", err)
 	}
 	var sagPerf bpefs.ModelPerformance
 	var sagPerfRef *firestore.DocumentRef
@@ -186,7 +120,7 @@ func btsMC() {
 		}
 	}
 	if !sagPerfFound {
-		log.Fatalf("Unable to retrieve most recent Sagarin performance for the week.")
+		return fmt.Errorf("Anneal: unable to retrieve most recent Sagarin performance for the week")
 	}
 	log.Printf("Sagarin Ratings performance: %v", sagPerf)
 
@@ -197,7 +131,7 @@ func btsMC() {
 	// Get schedule from most recent season
 	schedule, err := bts.MakeSchedule(ctx, fs, seasonRef, weekNumber, season.StreakTeams)
 	if err != nil {
-		log.Fatalf("Unable to make schedule: %v", err)
+		return fmt.Errorf("Anneal: unable to make schedule: %v", err)
 	}
 	log.Printf("Schedule built:\n%v", schedule)
 
@@ -215,7 +149,7 @@ func btsMC() {
 		}
 		players[id], err = bts.NewPlayer(id, str.Picker, remainingTeams, str.TeamsRemaining, str.PickTypesRemaining)
 		if err != nil {
-			log.Printf("Unable to make player: %v", err)
+			return fmt.Errorf("Anneal: unable to make player: %v", err)
 		}
 	}
 
@@ -243,7 +177,7 @@ func btsMC() {
 	playerItr := playerIterator(players)
 
 	// Loop through streaks
-	ppts := perPlayerTeamStreaks(playerItr, predictions)
+	ppts := perPlayerTeamStreaks(ctx, playerItr, predictions)
 
 	// Update best
 	bestStreaks := calculateBestStreaks(ppts)
@@ -254,14 +188,14 @@ func btsMC() {
 	// Print results
 	output := weekRef.Collection(bpefs.STEAK_PREDICTIONS_COLLECTION)
 
-	if DryRun {
+	if ctx.DryRun {
 		log.Print("DRY RUN: Would write the following:")
 	}
 	for _, streak := range streakOptions {
 		streak.Model = sagPointsRef
 		streak.PredictionTracker = sagPerfRef
 
-		if DryRun {
+		if ctx.DryRun {
 			log.Printf("%s: add %+v", output.Path, streak)
 			continue
 		}
@@ -270,10 +204,11 @@ func btsMC() {
 
 		_, _, err := output.Add(ctx, streak)
 		if err != nil {
-			log.Fatalf("Unable to write streak to Firestore: %v", err)
+			return fmt.Errorf("Anneal: unable to write streak to Firestore: %v", err)
 		}
 	}
 
+	return nil
 }
 
 // StreakMap is a simple map of player names to streaks
@@ -323,23 +258,23 @@ func playerIterator(pm bts.PlayerMap) <-chan *bts.Player {
 	return out
 }
 
-func perPlayerTeamStreaks(ps <-chan *bts.Player, predictions *bts.Predictions) <-chan playerTeamStreakProb {
+func perPlayerTeamStreaks(ctx *Context, ps <-chan *bts.Player, predictions *bts.Predictions) <-chan playerTeamStreakProb {
 
 	out := make(chan playerTeamStreakProb, 100)
 
 	go func(out chan<- playerTeamStreakProb) {
 		var wg sync.WaitGroup
-		sd := seed
+		sd := ctx.Seed
 		if sd < 0 {
 			sd = time.Now().UnixNano()
 		}
 		src := rand.NewSource(sd)
 		for p := range ps {
-			for i := 0; i < workers; i++ {
+			for i := 0; i < ctx.Workers; i++ {
 				wg.Add(1)
 				mySeed := src.Int63()
 				go func(worker int, p *bts.Player, out chan<- playerTeamStreakProb) {
-					anneal(mySeed, worker, p, predictions, out)
+					anneal(ctx, mySeed, worker, p, predictions, out)
 					wg.Done()
 				}(i, p, out)
 			}
@@ -351,18 +286,18 @@ func perPlayerTeamStreaks(ps <-chan *bts.Player, predictions *bts.Predictions) <
 	return out
 }
 
-func anneal(seed int64, worker int, p *bts.Player, predictions *bts.Predictions, out chan<- playerTeamStreakProb) {
+func anneal(ctx *Context, seed int64, worker int, p *bts.Player, predictions *bts.Predictions, out chan<- playerTeamStreakProb) {
 
 	src := rand.NewSource(seed)
 	rng := rand.New(src)
 
-	maxIterations := maxItr
-	tConst := tC
-	tExp := tE
-	maxDrift := resetItr
+	maxIterations := ctx.Iterations
+	tConst := ctx.C
+	tExp := ctx.E
+	maxDrift := ctx.WanderLimit
 	countSinceReset := maxDrift
 
-	s := bts.NewStreak(p.RemainingTeams(), <-p.WeekTypeIterator())
+	s := bts.NewStreak(p.RemainingTeams(), p.WeekTypeIterator().Permutation())
 	bestS := s.Clone()
 	resetS := s.Clone()
 	bestExp := 0.

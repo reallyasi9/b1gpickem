@@ -11,7 +11,7 @@ import (
 )
 
 func distinct(s []string) []string {
-	out := make([]string, 0, len(s))
+	out := make([]string, len(s))
 	n := 0
 	seen := make(map[string]struct{})
 	for _, x := range s {
@@ -21,7 +21,7 @@ func distinct(s []string) []string {
 		out[n] = x
 		n++
 	}
-	return out
+	return out[:n]
 }
 
 func EditTeam(ctx *Context) error {
@@ -80,13 +80,13 @@ func EditTeam(ctx *Context) error {
 	err = ctx.FirestoreClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
 		updates := make([]fs.Update, 0, 7)
 		if newTeam.Abbreviation != "" {
-			updates = append(updates, fs.Update{Path: "abbreviation", Value: &newTeam.Abbreviation})
+			updates = append(updates, fs.Update{Path: "abbreviation", Value: newTeam.Abbreviation})
 		}
 		if newTeam.Mascot != "" {
-			updates = append(updates, fs.Update{Path: "mascot", Value: &newTeam.Mascot})
+			updates = append(updates, fs.Update{Path: "mascot", Value: newTeam.Mascot})
 		}
 		if newTeam.School != "" {
-			updates = append(updates, fs.Update{Path: "school", Value: &newTeam.School})
+			updates = append(updates, fs.Update{Path: "school", Value: newTeam.School})
 		}
 		if len(newTeam.Logos) != 0 {
 			logos := newTeam.Logos
@@ -94,7 +94,7 @@ func EditTeam(ctx *Context) error {
 				logos = append(logos, team.Logos...)
 			}
 			logos = distinct(logos)
-			updates = append(updates, fs.Update{Path: "logos", Value: &logos})
+			updates = append(updates, fs.Update{Path: "logos", Value: logos})
 		}
 		if len(newTeam.Colors) != 0 {
 			colors := newTeam.Colors
@@ -102,7 +102,7 @@ func EditTeam(ctx *Context) error {
 				colors = append(colors, team.Colors...)
 			}
 			colors = distinct(colors)
-			updates = append(updates, fs.Update{Path: "colors", Value: &colors})
+			updates = append(updates, fs.Update{Path: "colors", Value: colors})
 		}
 		if len(newTeam.OtherNames) != 0 {
 			otherNames := newTeam.OtherNames
@@ -110,15 +110,15 @@ func EditTeam(ctx *Context) error {
 				otherNames = append(otherNames, team.OtherNames...)
 			}
 			otherNames = distinct(otherNames)
-			updates = append(updates, fs.Update{Path: "other_names", Value: &otherNames})
+			updates = append(updates, fs.Update{Path: "other_names", Value: otherNames})
 		}
 		if len(newTeam.ShortNames) != 0 {
-			shortNames := newTeam.Colors
+			shortNames := newTeam.ShortNames
 			if ctx.Append {
 				shortNames = append(shortNames, team.ShortNames...)
 			}
 			shortNames = distinct(shortNames)
-			updates = append(updates, fs.Update{Path: "short_names", Value: &shortNames})
+			updates = append(updates, fs.Update{Path: "short_names", Value: shortNames})
 		}
 		return t.Update(snap.Ref, updates)
 	})

@@ -10,16 +10,16 @@ const (
 	Home RelativeLocation = 2
 
 	// Near is a field closer to a given team's home field than the team's opponent's home field.
-	Near = 1
+	Near RelativeLocation = 1
 
 	// Neutral is a truely neutral location.
-	Neutral = 0
+	Neutral RelativeLocation = 0
 
 	// Far is a field closer to a given team's opponent's home field than the team's home field.
-	Far = -1
+	Far RelativeLocation = -1
 
 	// Away is a team's opponent's home field.
-	Away = -2
+	Away RelativeLocation = -2
 )
 
 // Game represents a matchup between two teams.

@@ -30,7 +30,7 @@ type Game struct {
 	NeutralSite bool `firestore:"neutral_site"`
 
 	// Venue is the venue of the game.
-	Venue *fs.DocumentRef `jsfirestoreon:"venue"`
+	Venue *fs.DocumentRef `firestore:"venue"`
 
 	// HomePoints is the number of points earned by the home team at end of game.
 	HomePoints *int `firestore:"home_points"`

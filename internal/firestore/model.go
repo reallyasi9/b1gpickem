@@ -8,6 +8,11 @@ import (
 	fs "cloud.google.com/go/firestore"
 )
 
+const MODELS_COLLECTION = "models"
+const MODEL_PERFORMANCES_COLLECTION = "model-performances"
+const PERFORMANCES_COLLECTION = "performances"
+const PREDICTIONS_COLLECTION = "predictions"
+
 // Model contains the information necessary to identify an NCAA football prediction model
 // as defined by ThePredictionTracker.com.
 type Model struct {
@@ -23,7 +28,7 @@ type Model struct {
 
 // GetModels returns a collection of models.
 func GetModels(ctx context.Context, client *fs.Client) ([]Model, []*fs.DocumentRef, error) {
-	refs, err := client.Collection("models").DocumentRefs(ctx).GetAll()
+	refs, err := client.Collection(MODELS_COLLECTION).DocumentRefs(ctx).GetAll()
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting model document refs: %w", err)
 	}
@@ -137,7 +142,7 @@ func (mp ModelPerformance) String() string {
 
 // GetMostRecentModelPerformances gets the most recent iteration of ModelPerformances for a given week.
 func GetMostRecentModelPerformances(ctx context.Context, fsClient *fs.Client, week *fs.DocumentRef) ([]ModelPerformance, []*fs.DocumentRef, error) {
-	coll := week.Collection("model-performances")
+	coll := week.Collection(MODEL_PERFORMANCES_COLLECTION)
 	iter := coll.OrderBy("timestamp", fs.Desc).Limit(1).Documents(ctx)
 	ss, err := iter.GetAll()
 	if err != nil {
@@ -146,7 +151,7 @@ func GetMostRecentModelPerformances(ctx context.Context, fsClient *fs.Client, we
 	if len(ss) == 0 {
 		return nil, nil, fmt.Errorf("failed to get model performance document: no performances found for week \"%s\"", week.Path)
 	}
-	pcoll := ss[0].Ref.Collection("performances")
+	pcoll := ss[0].Ref.Collection(PERFORMANCES_COLLECTION)
 	snaps, err := pcoll.Documents(ctx).GetAll()
 	if err != nil {
 		return nil, nil, fmt.Errorf("faled to get model performances from \"%s\": %v", pcoll.Path, err)
@@ -190,7 +195,7 @@ type ModelPrediction struct {
 func GetPredictionByModel(ctx context.Context, client *fs.Client, game *fs.DocumentRef, model *fs.DocumentRef) (ModelPrediction, *fs.DocumentRef, bool, error) {
 	var p ModelPrediction
 
-	snaps, err := game.Collection("predictions").Where("model", "==", model).Limit(1).Documents(ctx).GetAll()
+	snaps, err := game.Collection(PREDICTIONS_COLLECTION).Where("model", "==", model).Limit(1).Documents(ctx).GetAll()
 	if err != nil {
 		return p, nil, false, fmt.Errorf("error getting prediction document for game %s matching ref %s: %v", game.ID, model.ID, err)
 	}
@@ -209,7 +214,7 @@ func GetPredictionByModel(ctx context.Context, client *fs.Client, game *fs.Docum
 func GetPredictions(ctx context.Context, client *fs.Client, game *fs.DocumentRef) ([]ModelPrediction, []*fs.DocumentRef, error) {
 	// TODO: this is identical to many other "get from collection" methods and should somehow
 	// be made into an interface.
-	refs, err := game.Collection("predictions").DocumentRefs(ctx).GetAll()
+	refs, err := game.Collection(PREDICTIONS_COLLECTION).DocumentRefs(ctx).GetAll()
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting prediction document refs for game %s: %w", game.ID, err)
 	}

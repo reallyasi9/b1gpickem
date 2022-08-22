@@ -95,6 +95,15 @@ type StreakTeamsRemaining struct {
 	PickTypesRemaining []int `firestore:"pick_types_remaining"`
 }
 
+type NoStreakTeamsRemaining struct {
+	PickerID string
+	WeekID   string
+}
+
+func (f NoStreakTeamsRemaining) Error() string {
+	return fmt.Sprintf("streak: no streak teams remaining for picker %s in week %s", f.PickerID, f.WeekID)
+}
+
 // GetStreakTeamsRemaining looks up the remaining streak teams for a given picker, week combination.
 // If week is nil, returns the remaining streak teams based off the season information.
 func GetStreakTeamsRemaining(ctx context.Context, season, week, picker *firestore.DocumentRef) (str StreakTeamsRemaining, ref *firestore.DocumentRef, err error) {
@@ -113,12 +122,17 @@ func GetStreakTeamsRemaining(ctx context.Context, season, week, picker *firestor
 		str.Picker = picker
 		str.PickTypesRemaining = se.StreakPickTypes
 		str.TeamsRemaining = se.StreakTeams
+		// ref = week.Collection(STREAK_TEAMS_REMAINING_COLLECTION).NewDoc()
 		return
 	}
 
 	coll := week.Collection(STREAK_TEAMS_REMAINING_COLLECTION)
 	s, err := coll.Where("picker", "==", picker).Limit(1).Documents(ctx).GetAll()
 	if err != nil {
+		return
+	}
+	if len(s) == 0 {
+		err = NoStreakTeamsRemaining{PickerID: picker.ID, WeekID: week.ID}
 		return
 	}
 	if len(s) != 1 {

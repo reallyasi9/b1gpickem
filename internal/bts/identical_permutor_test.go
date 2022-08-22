@@ -27,14 +27,15 @@ func TestIdenticalPermutor(t *testing.T) {
 	}
 
 	// First should be identical
-	itr := p.Iterator()
-	test := <-itr
+	p.Permute()
+	test := p.Permutation()
 	if !check(s, test) {
 		t.Fatalf("expected %v, got %v", s, test)
 	}
 
 	// Second should not be identical
-	test = <-itr
+	p.Permute()
+	test = p.Permutation()
 	if check(s, test) {
 		t.Fatalf("expected different from %v, got %v", s, test)
 	}
@@ -44,8 +45,8 @@ func TestIdenticalPermutor(t *testing.T) {
 
 	// Should be only 4 of these
 	n := 0
-	itr2 := p2.Iterator()
-	for test = range itr2 {
+	for p2.Permute() {
+		test = p2.Permutation()
 		t.Log(test)
 		n++
 	}
@@ -62,8 +63,8 @@ func TestIdenticalPermutor(t *testing.T) {
 	// Should be (a+b)!/a!/b! of these
 	p3 := NewIdenticalPermutor(2, 3)
 	n = 0
-	itr3 := p3.Iterator()
-	for test = range itr3 {
+	for p3.Permute() {
+		test = p3.Permutation()
 		t.Log(test)
 		n++
 	}
@@ -85,9 +86,8 @@ func BenchmarkIdenticalPermutor10(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		itr := p.Iterator()
-		for range itr {
-			// Count them all!
+		for p.Permute() {
 		}
+		p.Reset()
 	}
 }

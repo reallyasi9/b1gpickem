@@ -1,10 +1,9 @@
 // The subcommand update-sagarin scrapes the team Sagarin ratings from https://sagarin.com/sports/cfsend.htm.
-package main
+package updatemodels
 
 import (
 	"context"
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -50,75 +49,23 @@ var unrankedRE = regexp.MustCompile(`(?i)___UNRATED___.*?` +
 	`<font color="` + goldenColor + `">\s*([\-0-9\.]+).*?` + // golden
 	`<font color="` + recentColor + `">\s*([\-0-9\.]+)`) // recent
 
-// usFlagSet is a flag.FlagSet for parsing the update-sagarin subcommand.
-var usFlagSet *flag.FlagSet
-
 // sagURL is the URL or file name of the file containing Sagarin ratings.
-var sagURL string
+const SAG_URL = "https://sagarin.com/sports/cfsend.htm"
 
-// usUsage is the usage documentation for the update-sagarin subcommand.
-func usUsage() {
-	fmt.Fprint(flag.CommandLine.Output(), `Usage: b1gtool [global-flags] update-sagarin [flags] <season> <week>
-	
-Update Sagarin team ratings and game outcome predictions.
-	
-Arguments:
-  season int
-      Year of games being updated.
-  week int
-      Week of games being updated.
+func UpdateSagarin(ctx *Context) error {
+	year := strconv.Itoa(ctx.Season)
+	week := strconv.Itoa(ctx.Week)
 
-Flags:
-`)
-
-	usFlagSet.PrintDefaults()
-
-	fmt.Fprint(flag.CommandLine.Output(), "\nGlobal Flags:\n")
-
-	flag.PrintDefaults()
-
-}
-
-func init() {
-	Commands["update-sagarin"] = updateSagarin
-	Usage["update-sagarin"] = usUsage
-
-	usFlagSet = flag.NewFlagSet("update-sagarin", flag.ExitOnError)
-	usFlagSet.SetOutput(flag.CommandLine.Output())
-	usFlagSet.Usage = usUsage
-
-	usFlagSet.StringVar(&sagURL, "sagarin", "https://sagarin.com/sports/cfsend.htm", "URL or file name of file containing Sagarin team ratings.")
-}
-
-func updateSagarin() {
-	err := usFlagSet.Parse(flag.Args()[1:])
-	if err != nil {
-		log.Fatalf("Failed to parse update-sagarin arguments: %v", err)
-	}
-
-	if usFlagSet.NArg() != 2 {
-		usFlagSet.Usage()
-		log.Fatal("Season and week arguments not supplied")
-	}
-	year := usFlagSet.Arg(0) // technically, strings are okay
-	week := usFlagSet.Arg(1)
-
-	ctx := context.Background()
-	fsClient, err := fs.NewClient(ctx, ProjectID)
-	if err != nil {
-		log.Fatalf("Failed to create firestore client: %v", err)
-	}
-
-	seasonRef := fsClient.Collection(firestore.SEASONS_COLLECTION).Doc(year)
+	seasonRef := ctx.FirestoreClient.Collection(firestore.SEASONS_COLLECTION).Doc(year)
 	teams, refs, err := firestore.GetTeams(ctx, seasonRef)
 	if err != nil {
-		log.Fatalf("Failed to get teams: %v", err)
+		return fmt.Errorf("GetPredictions: Failed to get teams: %w", err)
 	}
 	teamLookup := firestore.NewTeamRefsByOtherName(teams, refs)
 
-	models, refs, err := firestore.GetModels(ctx, fsClient)
+	models, refs, err := firestore.GetModels(ctx, ctx.FirestoreClient)
 	if err != nil {
-		log.Fatalf("Failed to get models: %v", err)
+		return fmt.Errorf("GetPredictions: Failed to get models: %w", err)
 	}
 	modelLookup := firestore.NewModelRefsByShortName(models, refs)
 
@@ -128,22 +75,22 @@ func updateSagarin() {
 	for i, n := range modelNames {
 		var ok bool
 		if modelRefs[i], ok = modelLookup[n]; !ok {
-			log.Fatalf("Failed to find reference to model \"%s\"", n)
+			return fmt.Errorf("GetPredictions: Failed to find reference to model \"%s\"", n)
 		}
 	}
 
-	sagTable, err := parseSagarinTable(sagURL, teamLookup, modelRefs)
+	sagTable, err := parseSagarinTable(SAG_URL, teamLookup, modelRefs)
 	if err != nil {
-		log.Fatalf("Failed to create Sagarin table: %v", err)
+		return fmt.Errorf("GetPredictions: Failed to create Sagarin table: %w", err)
 	}
 
 	// Begin writing
-	if DryRun {
+	if ctx.DryRun {
 		log.Printf("DRY RUN: Would write the following to Firestore:")
 		for _, s := range sagTable {
 			log.Printf("%v", s)
 		}
-		return
+		return nil
 	}
 
 	weekRef := seasonRef.Collection("weeks").Doc(week)
@@ -153,18 +100,18 @@ func updateSagarin() {
 		Timestamp time.Time `firestore:"timestamp,serverTimestamp"`
 	}
 	ts := timestamped{}
-	if Force {
+	if ctx.Force {
 		_, err = pointsRef.Set(ctx, &ts)
 	} else {
 		_, err = pointsRef.Create(ctx, &ts)
 	}
 	if err != nil {
-		log.Fatalf("Failed to create timestamped points document: %v", err)
+		return fmt.Errorf("GetPredictions: Failed to create timestamped points document: %w", err)
 	}
 
 	for model, ele := range sagTable {
 
-		err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
+		err = ctx.FirestoreClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
 			for _, s := range ele {
 				var ref *fs.DocumentRef
 				if s.Team == nil {
@@ -172,7 +119,7 @@ func updateSagarin() {
 				} else {
 					ref = pointsRef.Collection(model).Doc(s.Team.ID)
 				}
-				if Force {
+				if ctx.Force {
 					err = t.Set(ref, &s)
 				} else {
 					err = t.Create(ref, &s)
@@ -184,10 +131,10 @@ func updateSagarin() {
 			return nil
 		})
 		if err != nil {
-			log.Fatalf("Failed to write transaction: %v", err)
+			return fmt.Errorf("GetPredictions: Failed to write transaction: %w", err)
 		}
 	}
-
+	return nil
 }
 
 type sagarinElement []firestore.ModelTeamPoints
@@ -217,7 +164,7 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 
 	content, err := ioutil.ReadAll(rc)
 	if err != nil {
-		return nil, fmt.Errorf("parseSagarinTable: cannot read body from \"%s\": %v", f, err)
+		return nil, fmt.Errorf("parseSagarinTable: cannot read body from \"%s\": %w", f, err)
 	}
 
 	bodyString := string(content)
@@ -242,7 +189,7 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 		var err error
 		advantages[i], err = strconv.ParseFloat(homeMatches[i+1], 64)
 		if err != nil {
-			return nil, fmt.Errorf("parseSagarinTable: cannot parse home advantage string \"%s\" as float: %v", homeMatches[i+1], err)
+			return nil, fmt.Errorf("parseSagarinTable: cannot parse home advantage string \"%s\" as float: %w", homeMatches[i+1], err)
 		}
 	}
 
@@ -269,7 +216,7 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 		for j := 0; j < 4; j++ {
 			rating, err := strconv.ParseFloat(match[j+2], 64) // name also here
 			if err != nil {
-				return nil, fmt.Errorf("parseSagarinTable: cannot parse rating string \"%s\" as float: %v", match[j+2], err)
+				return nil, fmt.Errorf("parseSagarinTable: cannot parse rating string \"%s\" as float: %w", match[j+2], err)
 			}
 			m := modelRefs[j]
 			tr := firestore.ModelTeamPoints{
@@ -285,7 +232,7 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 	for j := 0; j < 4; j++ {
 		rating, err := strconv.ParseFloat(unrankedMatches[j+1], 64) // unranked have no name
 		if err != nil {
-			return nil, fmt.Errorf("parseSagarinTable: cannot parse unranked rating string \"%s\" as float: %v", unrankedMatches[j], err)
+			return nil, fmt.Errorf("parseSagarinTable: cannot parse unranked rating string \"%s\" as float: %w", unrankedMatches[j], err)
 		}
 		m := modelRefs[j]
 		tr := firestore.ModelTeamPoints{
