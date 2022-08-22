@@ -10,6 +10,12 @@ import (
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
+// The CFBData calls latitude "X" and longitude "Y" for whatever reason
+type LatLon struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
 type Venue struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
@@ -19,13 +25,10 @@ type Venue struct {
 	State       string `json:"state"`
 	Zip         string `json:"zip"`
 	CountryCode string `json:"country_code"`
-	Location    struct {
-		X float64 `json:"x"`
-		Y float64 `json:"y"`
-	} `json:"location"`
-	Year     int    `json:"year"`
-	Dome     bool   `json:"dome"`
-	Timezone string `json:"timezone"`
+	Location    LatLon `json:"location"`
+	Year        int    `json:"year"`
+	Dome        bool   `json:"dome"`
+	Timezone    string `json:"timezone"`
 }
 
 func (v Venue) toFirestore() firestore.Venue {
@@ -49,6 +52,26 @@ func (v Venue) toFirestore() firestore.Venue {
 	}
 }
 
+func MakeUnknownVenue() Venue {
+	return Venue{
+		ID:          0,
+		Name:        "Unknown Venule",
+		Capacity:    0,
+		Grass:       false,
+		City:        "Unknown",
+		State:       "??",
+		Zip:         "?????",
+		CountryCode: "??",
+		Location: LatLon{
+			X: 0,
+			Y: 0,
+		},
+		Year:     0,
+		Dome:     false,
+		Timezone: "???",
+	}
+}
+
 type VenueCollection struct {
 	venues   []Venue
 	fsVenues []firestore.Venue
@@ -68,12 +91,24 @@ func GetVenues(client *http.Client, key string) (VenueCollection, error) {
 		return VenueCollection{}, fmt.Errorf("failed to unmarshal venues response body: %v", err)
 	}
 
+	hasUnknown := false
 	f := make([]firestore.Venue, len(venues))
 	refs := make([]*fs.DocumentRef, len(venues))
 	ids := make(map[int64]int)
 	for i, v := range venues {
 		f[i] = v.toFirestore()
 		ids[v.ID] = i
+		if v.ID == 0 {
+			hasUnknown = true
+		}
+	}
+
+	// Make sure the venues has a default location for unknown schedules
+	if !hasUnknown {
+		v := MakeUnknownVenue()
+		f = append(f, v.toFirestore())
+		ids[v.ID] = len(venues)
+		refs = append(refs, nil)
 	}
 
 	return VenueCollection{venues: venues, fsVenues: f, refs: refs, ids: ids}, nil
