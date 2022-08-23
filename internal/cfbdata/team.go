@@ -159,6 +159,9 @@ func (t Team) toFirestore() firestore.Team {
 	otherNames = appendNonNilStrings(otherNames, t.AltName1, t.AltName2, t.AltName3, &t.School)
 	otherNames = replaceCommonAbbreviations(otherNames)
 	otherNames = distinctStrings(otherNames)
+	if t.Abbreviation != nil {
+		otherNames = remove(otherNames, *t.Abbreviation)
+	}
 	colors := make([]string, 0)
 	colors = appendNonNilStrings(colors, t.Color, t.AltColor)
 
