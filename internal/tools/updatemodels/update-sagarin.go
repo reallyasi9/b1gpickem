@@ -43,7 +43,7 @@ var ratingsRE = regexp.MustCompile(`(?i)<font color="#000000">\s*` +
 	`<font color="` + recentColor + `">\s*([\-0-9\.]+)`) // recent
 
 // unrankedRE grabs the unranked team points (should be -91, but just in case...)
-var unrankedRE = regexp.MustCompile(`(?i)___UNRATED___.*?` +
+var unrankedRE = regexp.MustCompile(`(?i)\*\*\*UNRATED\*\*\*.*?` +
 	`<font color="` + ratingColor + `">\s*([\-0-9\.]+).*?` + // rating
 	`<font color="` + predictorColor + `">\s*([\-0-9\.]+).*?` + // predictor
 	`<font color="` + goldenColor + `">\s*([\-0-9\.]+).*?` + // golden
