@@ -74,6 +74,33 @@ func MakeSchedule(ctx context.Context, client *firestore.Client, season *firesto
 	return
 }
 
+type weekTeam struct {
+	week int
+	team Team
+}
+
+// UniqueGames filters a schedule to the unique games.
+// If two teams (the highest level of sorting of the schedule) play each other, only one of those games is kept.
+func (s Schedule) UniqueGames() []*Game {
+	gamesSeen := make(map[weekTeam]*Game)
+	for team, weeks := range s {
+		for week, game := range weeks {
+			opponent := weekTeam{week: week, team: game.team2}
+			if _, ok := gamesSeen[opponent]; !ok {
+				me := weekTeam{week: week, team: team}
+				gamesSeen[me] = game
+			}
+		}
+	}
+
+	games := make([]*Game, 0, len(gamesSeen))
+	for _, game := range gamesSeen {
+		games = append(games, game)
+	}
+
+	return games
+}
+
 // Get a game for a team and week number.
 func (s Schedule) Get(t Team, w int) *Game {
 	if t == NONE {

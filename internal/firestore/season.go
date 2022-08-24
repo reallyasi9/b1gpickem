@@ -24,6 +24,9 @@ type Season struct {
 	// StreakTeams is an array of teams available for the BTS competition.
 	StreakTeams []*firestore.DocumentRef `firestore:"streak_teams"`
 
+	// PonyTeams is a map of team IDs to initial predicted wins for the PYP competition. Negative wins imply the pony is from the preseason top 25 rather than the B1G.
+	PonyTeams map[string]float64 `firestore:"pony_teams"`
+
 	// StreakPickTypes is an array of pick types available for the BTS competition.
 	// The indices of the array represent the following:
 	//   0: the number of bye weeks
