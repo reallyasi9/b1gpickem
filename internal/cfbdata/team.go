@@ -169,7 +169,7 @@ func (t Team) toFirestore() firestore.Team {
 
 	ft := firestore.Team{
 		Abbreviation: abbr,
-		ShortNames:   []string{abbr},
+		ShortNames:   []string{},
 		OtherNames:   otherNames,
 		School:       t.School,
 		Mascot:       coalesceString(t.Mascot, "Football Team"),
