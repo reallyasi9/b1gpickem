@@ -82,7 +82,7 @@ func (cli CLI) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to get model information: %w\nHave you run `b1gtool models setup` yet?", err)
 	}
-	modelLookup := firestore.NewModelRefsBySystem(models, modelRefs)
+	modelLookup := firestore.NewModelRefsByShortName(models, modelRefs)
 
 	picks := make([]firestore.Pick, len(sgss))
 	dogs := make([]dogPick, 0)
