@@ -169,6 +169,7 @@ func (cli CLI) Run() error {
 	if cli.DryRun {
 		log.Print("DRY RUN: would write the following to Firestore")
 		for _, p := range picks {
+			p.Picker = pkRef
 			log.Printf("%s", p)
 		}
 		log.Printf("Streak pick: %+v", sp)
