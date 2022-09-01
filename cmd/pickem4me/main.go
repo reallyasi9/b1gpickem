@@ -8,6 +8,7 @@ import (
 
 	fs "cloud.google.com/go/firestore"
 	"github.com/alecthomas/kong"
+	"github.com/reallyasi9/b1gpickem/internal/bts"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
@@ -17,6 +18,7 @@ type CLI struct {
 	NoisySpreadModel string `help:"Model to use for noisy-spread games. Default fallback is to use the straight-up model, otherwise the model with the smallest MAE to date." short:"n"`
 	SuperdogModel    string `help:"Model to use for superdog games. Default fallback is to use the noisy-spread model, otherwise the model with the smallest MAE to date." short:"d"`
 	Fallback         bool   `help:"Use fallback models when specified models are undefined."`
+	Sagarin          bool   `help:"Use Sagarin points when all else fails."`
 	DryRun           bool   `help:"Print intended writes to log and exit without updating the database."`
 	Force            bool   `help:"Force overwrite data in the database."`
 	Season           int    `arg:"" help:"Season year." required:""`
@@ -42,6 +44,7 @@ func (cli CLI) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to lookup picker '%s': %w", cli.Picker, err)
 	}
+	log.Printf("Got picker %s from '%s'", pkRef.ID, cli.Picker)
 
 	_, seasonRef, err := firestore.GetSeason(ctx, fsClient, cli.Season)
 	if err != nil {
@@ -114,7 +117,7 @@ func (cli CLI) Run() error {
 			gt = straightUp
 		}
 
-		pick, err := pickEm(ctx, fsClient, ss.Ref, perfs, modelChoice, gt, cli.Fallback)
+		pick, err := pickEm(ctx, fsClient, weekRef, ss.Ref, perfs, modelChoice, gt, cli.Fallback, cli.Sagarin)
 		if err != nil {
 			return fmt.Errorf("failed to pick Game '%s': %w", gamess.Ref.Path, err)
 		}
@@ -221,11 +224,14 @@ const (
 func pickEm(
 	ctx context.Context,
 	fsClient *fs.Client,
+	weekRef,
 	sg *fs.DocumentRef,
 	perfs []firestore.ModelPerformance,
 	modelChoice *fs.DocumentRef,
 	gt gameType,
-	fallback bool) (firestore.Pick, error) {
+	fallback bool,
+	sagarin bool,
+) (firestore.Pick, error) {
 	// TODO: fill out Pick from SlateGame
 	p := firestore.Pick{
 		SlateGame: sg,
@@ -261,36 +267,51 @@ func pickEm(
 		// simple linear search will do
 		var pred firestore.ModelPrediction
 		var nilPred firestore.ModelPrediction
-		var i int
-		for i, pred = range predictions {
-			if pred.Model.Path == modelChoice.Path {
+		var iPred int
+		for i, prd := range predictions {
+			if prd.Model.ID == modelChoice.ID {
+				iPred = i
+				pred = prd
 				break
 			}
 		}
-		log.Printf("Using model %s to pick game %s", pred.Model.ID, ss.Ref.ID)
-		predRef := predRefs[i]
 		var perf firestore.ModelPerformance
 		var nilPerf firestore.ModelPerformance
-		for _, perf = range perfs {
-			if perf.Model.Path == modelChoice.Path {
+		for _, prf := range perfs {
+			if prf.Model.ID == modelChoice.ID {
+				perf = prf
 				break
 			}
 		}
 		// use the prediction to fill out the pick
 		if pred != nilPred && perf != nilPerf {
-			p.FillOut(game, perf, pred, predRef, sgame.NoisySpread)
+			log.Printf("Using model %s to pick game %s", pred.Model.ID, ss.Ref.ID)
+			p.FillOut(game, perf, pred, predRefs[iPred], sgame.NoisySpread)
 			return p, nil
 		}
 	}
-	if !fallback {
+	if !fallback && !sagarin {
 		return p, fmt.Errorf("no predictions for game '%s' and no fallback specified", sgame.Game.Path)
 	}
 
 	// fallback onto best
-	log.Printf("Using fallback model to pick game %s", ss.Ref.ID)
-	pred, predRef, perf, err := getFallbackPrediction(ctx, predictions, predRefs, perfs, gt)
-	if err != nil {
+	var pred firestore.ModelPrediction
+	var predRef *fs.DocumentRef
+	var perf firestore.ModelPerformance
+	if fallback {
+		log.Printf("Using fallback model to pick game %s", ss.Ref.ID)
+		pred, predRef, perf, err = getFallbackPrediction(ctx, predictions, predRefs, perfs, gt)
+	}
+	if err != nil && !sagarin {
 		return p, fmt.Errorf("unable to get fallback prediction: %w", err)
+	}
+	if err != nil || sagarin {
+		// fallback fallback to Sagarin points
+		log.Printf("Using Sagarin points to pick game %s", ss.Ref.ID)
+		pred, predRef, perf, err = getSagarinPrediction(ctx, fsClient, weekRef, perfs, game)
+	}
+	if err != nil {
+		return p, fmt.Errorf("unable to get fallback or Sagarin prediction: %w", err)
 	}
 	p.FillOut(game, perf, pred, predRef, sgame.NoisySpread)
 
@@ -336,6 +357,78 @@ func getFallbackPrediction(ctx context.Context, preds []firestore.ModelPredictio
 		err = fmt.Errorf("unable to get fallback model: no predictions match")
 	}
 	log.Printf("Fallback model chosen: %s", bestPred.Model.ID)
+
+	return
+}
+
+var sagarinRatings map[string]firestore.ModelTeamPoints
+
+func getSagarinPrediction(ctx context.Context, fsClient *fs.Client, weekRef *fs.DocumentRef, performances []firestore.ModelPerformance, game firestore.Game) (bestPred firestore.ModelPrediction, predRef *fs.DocumentRef, bestPerf firestore.ModelPerformance, err error) {
+	// Get most recent Sagarin Ratings proper
+	// I can cheat because I know this already.
+	if len(sagarinRatings) == 0 {
+		sagarinRatings = make(map[string]firestore.ModelTeamPoints)
+		sagPointsRef := weekRef.Collection("team-points").Doc("sagarin")
+		sagSnaps, e := sagPointsRef.Collection("linesag").Documents(ctx).GetAll()
+		if e != nil {
+			err = fmt.Errorf("getSagarinPrediction: unable to get sagarin ratings: %w", e)
+			return
+		}
+		for _, s := range sagSnaps {
+			var sag firestore.ModelTeamPoints
+			err = s.DataTo(&sag)
+			if err != nil {
+				err = fmt.Errorf("getSagarinPrediction: unable to get sagarin rating: %w", err)
+				return
+			}
+			// Sagarin has one nil team representing a non-recorded team. Don't keep that one.
+			if sag.Team == nil {
+				continue
+			}
+			sagarinRatings[sag.Team.ID] = sag
+		}
+		log.Printf("Sagarin ratings filled (first time)")
+	} else {
+		log.Printf("Sagarin ratings already filled")
+	}
+
+	var sagPerf firestore.ModelPerformance
+	sagPerfFound := false
+	for _, perf := range performances {
+		if perf.Model.ID == "linesag" {
+			sagPerf = perf
+			sagPerfFound = true
+			break
+		}
+	}
+	if !sagPerfFound {
+		err = fmt.Errorf("getSagarinPrediction: unable to retrieve most recent Sagarin performance for the week")
+		return
+	}
+
+	// Build the probability model
+	model := bts.NewGaussianSpreadModel(sagarinRatings, sagPerf)
+
+	// Fake a game and predict it
+	location := bts.Home
+	if game.NeutralSite {
+		location = bts.Neutral
+	}
+	btsGame := bts.NewGame(bts.Team(game.HomeTeam.ID), bts.Team(game.AwayTeam.ID), location)
+	_, _, spread := model.MostLikelyOutcome(btsGame)
+
+	// fake the model prediction
+	bestPred.AwayTeam = game.AwayTeam
+	bestPred.HomeTeam = game.HomeTeam
+	bestPred.Model = sagPerf.Model
+	bestPred.NeutralSite = game.NeutralSite
+	bestPred.Spread = spread
+
+	bestPerf = sagPerf
+
+	predRef = nil
+
+	err = nil
 
 	return
 }
