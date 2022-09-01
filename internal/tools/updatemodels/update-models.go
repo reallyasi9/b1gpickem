@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const PERF_URL = "https://www.thepredictiontracker.com/ncaaresults.php"
+const perfURL = "https://www.thepredictiontracker.com/ncaaresults.php"
 
 func UpdateModels(ctx *Context) error {
 	models, refs, err := firestore.GetModels(ctx, ctx.FirestoreClient)
@@ -32,7 +32,7 @@ func UpdateModels(ctx *Context) error {
 	slookup := firestore.NewModelRefsBySystem(models, refs)
 	rlookup := lookup.ReverseMap()
 
-	pt, err := newPerformanceTable(PERF_URL, slookup)
+	pt, err := newPerformanceTable(perfURL, slookup)
 	if err != nil {
 		return fmt.Errorf("UpdateModels: Error parsing performance table: %w", err)
 	}

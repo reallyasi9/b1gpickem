@@ -1,4 +1,3 @@
-// The subcommand update-sagarin scrapes the team Sagarin ratings from https://sagarin.com/sports/cfsend.htm.
 package updatemodels
 
 import (
@@ -50,7 +49,7 @@ var unrankedRE = regexp.MustCompile(`(?i)\*\*\*UNRATED\*\*\*.*?` +
 	`<font color="` + recentColor + `">\s*([\-0-9\.]+)`) // recent
 
 // sagURL is the URL or file name of the file containing Sagarin ratings.
-const SAG_URL = "https://sagarin.com/sports/cfsend.htm"
+const sagURL = "https://sagarin.com/sports/cfsend.htm"
 
 func UpdateSagarin(ctx *Context) error {
 	year := strconv.Itoa(ctx.Season)
@@ -79,7 +78,7 @@ func UpdateSagarin(ctx *Context) error {
 		}
 	}
 
-	sagTable, err := parseSagarinTable(SAG_URL, teamLookup, modelRefs)
+	sagTable, err := parseSagarinTable(sagURL, teamLookup, modelRefs)
 	if err != nil {
 		return fmt.Errorf("GetPredictions: Failed to create Sagarin table: %w", err)
 	}

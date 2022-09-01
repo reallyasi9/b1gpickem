@@ -15,13 +15,13 @@ import (
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
-const PRED_CSV = "https://www.thepredictiontracker.com/ncaapredictions.csv"
+const predCSV = "https://www.thepredictiontracker.com/ncaapredictions.csv"
 
 func GetPredictions(ctx *Context) error {
 
-	pt, err := newPredictionTable(PRED_CSV)
+	pt, err := newPredictionTable(predCSV)
 	if err != nil {
-		return fmt.Errorf("GetPredictions: Failed to read prediction table from CSV '%s': %w", PRED_CSV, err)
+		return fmt.Errorf("GetPredictions: Failed to read prediction table from CSV '%s': %w", predCSV, err)
 	}
 
 	year := strconv.Itoa(ctx.Season)
