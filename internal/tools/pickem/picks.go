@@ -141,8 +141,6 @@ func makePicksExcelFile(ctx context.Context, picks []firestore.Pick, pickRefs []
 		} else {
 			if lastPickRow < 0 || sg.Row > lastPickRow {
 				lastPickRow = sg.Row
-				// in case there are no SDs!
-				firstSDRow = sg.Row + 1
 			}
 		}
 		if err = addRow(ctx, outExcel, sheetName, sg.Row, pick); err != nil {
@@ -151,6 +149,10 @@ func makePicksExcelFile(ctx context.Context, picks []firestore.Pick, pickRefs []
 	}
 
 	// Between the picks and dogs, closer to the picks.
+	if firstSDRow < 0 {
+		// In case there are no SDs.
+		firstSDRow = lastPickRow + 1
+	}
 	btsRow := int(math.Ceil(float64(lastPickRow) + float64(firstSDRow-lastPickRow)/2.))
 	if btsPickRef != nil {
 		if err := addRow(ctx, outExcel, sheetName, btsRow, btsPick); err != nil {

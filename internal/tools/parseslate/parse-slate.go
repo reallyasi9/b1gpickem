@@ -277,7 +277,7 @@ func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl fire
 				break
 			}
 
-			matchup, favorite, value, found, err := parseDog(cell.Value, tlOther)
+			matchup, favorite, favoriteRank, unfavoriteRank, value, found, err := parseDog(cell.Value, tlOther)
 			if err != nil {
 				return nil, err
 			}
@@ -288,12 +288,16 @@ func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl fire
 			if !ok {
 				return nil, fmt.Errorf("superdog matchup %+v not found", matchup)
 			}
+			homeRank, awayRank = favoriteRank, unfavoriteRank
 			if swap {
 				matchup.Home, matchup.Away = matchup.Away, matchup.Home
+				homeRank, awayRank = awayRank, homeRank
 			}
 			sgame := firestore.SlateGame{
 				Row:         irow,
 				Game:        game,
+				HomeRank:    homeRank,
+				AwayRank:    awayRank,
 				HomeFavored: matchup.Home == favorite,
 				Value:       value,
 				Superdog:    true,
@@ -316,7 +320,7 @@ var gameRe = regexp.MustCompile(`^\s*(\*\*)?\s*(?:#\s*(\d+)\s+)?(.*?)\s+((?i:@|a
 
 var noiseRe = regexp.MustCompile(`\s*(?i:Enter\s+(.*?)\s+iff\s+you\s+predict\s+.*?\s+wins\s+by\s+at\s+least\s+(\d+)\s+points)`)
 
-var sdRe = regexp.MustCompile(`(?i:\s*(.*?)\s+over\s+(.*?)\s+\(\s*(\d+)\s+points,?\s+if\s+correct\s*\))`)
+var sdRe = regexp.MustCompile(`(?i:\s*(?:#\s*(\d+)\s+)?(.*?)\s+(?:over|upsets)\s+(?:#\s*(\d+)\s+)?(.*?)\s+\(\s*(\d+)\s+points,?\s+if\s+correct\s*\))`)
 
 // parseGame parses game information in Luke's default format
 func parseGame(cell string, tl firestore.TeamRefsByName) (matchup firestore.Matchup, homeRank int, awayRank int, gotw bool, found bool, err error) {
@@ -394,7 +398,7 @@ func parseNoisySpread(cell string, tl firestore.TeamRefsByName) (favorite string
 }
 
 // parseDog parses a superdog game from a cell.
-func parseDog(cell string, tl firestore.TeamRefsByName) (matchup firestore.Matchup, favorite string, value int, found bool, err error) {
+func parseDog(cell string, tl firestore.TeamRefsByName) (matchup firestore.Matchup, favorite string, favoriteRank int, unfavoriteRank int, value int, found bool, err error) {
 	submatches := sdRe.FindStringSubmatch(cell)
 	if len(submatches) == 0 {
 		return
@@ -402,7 +406,7 @@ func parseDog(cell string, tl firestore.TeamRefsByName) (matchup firestore.Match
 
 	found = true
 
-	name := submatches[1]
+	name := submatches[2]
 	var teamRef *fs.DocumentRef
 	var ok bool
 	if teamRef, ok = tl[name]; !ok {
@@ -410,16 +414,30 @@ func parseDog(cell string, tl firestore.TeamRefsByName) (matchup firestore.Match
 		return
 	}
 	matchup.Home = teamRef.ID
+	if submatches[1] != "" {
+		unfavoriteRank, err = strconv.Atoi(submatches[1])
+		if err != nil {
+			err = fmt.Errorf("parseDog: error parsing unfavorite rank: %w", err)
+			return
+		}
+	}
 
-	name = submatches[2]
+	name = submatches[4]
 	if teamRef, ok = tl[name]; !ok {
 		err = fmt.Errorf("parseDog: unable to find team with name '%s' in cell '%s'", name, cell)
 		return
 	}
 	matchup.Away = teamRef.ID
 	favorite = teamRef.ID // second team listed is always the favorite
+	if submatches[3] != "" {
+		favoriteRank, err = strconv.Atoi(submatches[3])
+		if err != nil {
+			err = fmt.Errorf("parseDog: error parsing favorite rank: %w", err)
+			return
+		}
+	}
 
-	value, err = strconv.Atoi(submatches[3])
+	value, err = strconv.Atoi(submatches[5])
 
 	if err != nil {
 		err = fmt.Errorf("parseDog: error parsing game value: %w", err)
