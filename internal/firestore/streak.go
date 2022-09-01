@@ -208,7 +208,7 @@ func GetStreakPredictions(ctx context.Context, week, picker *firestore.DocumentR
 		return sp, nil, NoStreakPickError(picker.ID)
 	}
 	if len(sps) > 1 {
-		return sp, nil, fmt.Errorf("ambiguous streak picks for picker %s", picker.ID)
+		return sp, nil, fmt.Errorf("ambiguous streak predictions for picker %s", picker.ID)
 	}
 	err = sps[0].DataTo(&sp)
 	return sp, sps[0].Ref, err

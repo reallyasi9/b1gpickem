@@ -124,6 +124,8 @@ func makeStreakPick(ctx *Context, season, weekFrom, weekTo, picker *fs.DocumentR
 		log.Printf("%s -> %v\n", newRef.Path, str)
 		return nil
 	}
+
+	// TODO: Record in STREAK_PICKS_COLLECTION a la pickem4me.Run()
 	if ctx.Force {
 		_, err = newRef.Set(ctx, &str)
 	} else {
