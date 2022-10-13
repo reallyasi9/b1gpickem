@@ -225,12 +225,16 @@ func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl fire
 
 	games := make([]firestore.SlateGame, 0)
 
+	// catch all the errors from all the cells and report them all rather than stopping after the first
+	errors := make([]error, 0)
+
 	for irow, row := range sheet.Rows {
 		for icol, cell := range row.Cells {
 
 			matchup, homeRank, awayRank, gotw, found, err := parseGame(cell.Value, tlShort)
 			if err != nil {
-				return nil, err
+				errors = append(errors, err)
+				continue
 			}
 			if found {
 				value := 1
@@ -239,7 +243,8 @@ func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl fire
 				}
 				game, swap, wn, ok := gl.LookupCorrectMatchup(matchup)
 				if !ok {
-					return nil, fmt.Errorf("pick matchup %+v not found", matchup)
+					errors = append(errors, fmt.Errorf("pick matchup %+v not found", matchup))
+					continue
 				}
 				if swap {
 					homeRank, awayRank = awayRank, homeRank
@@ -259,7 +264,8 @@ func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl fire
 				if len(row.Cells) != icol+1 {
 					favorite, spread, found, err := parseNoisySpread(row.Cells[icol+1].Value, tlShort)
 					if err != nil {
-						return nil, err
+						errors = append(errors, err)
+						continue
 					}
 					if found {
 						sgame.HomeFavored = favorite == matchup.Home
@@ -278,14 +284,15 @@ func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl fire
 
 			matchup, favorite, value, found, err := parseDog(cell.Value, tlOther)
 			if err != nil {
-				return nil, err
+				errors = append(errors, err)
 			}
 			if !found {
 				continue
 			}
 			game, swap, _, ok := gl.LookupCorrectMatchup(matchup)
 			if !ok {
-				return nil, fmt.Errorf("superdog matchup %+v not found", matchup)
+				errors = append(errors, fmt.Errorf("superdog matchup %+v not found", matchup))
+				continue
 			}
 			if swap {
 				matchup.Home, matchup.Away = matchup.Away, matchup.Home
@@ -301,16 +308,25 @@ func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl fire
 		}
 	}
 
-	return games, nil
+	if len(errors) != 0 {
+		log.Print("Errors occured while parsing the slate")
+		for i, e := range errors {
+			log.Printf("Error %d: %s", i, e)
+		}
+		log.Print("Returning the first error")
+		err = errors[0]
+	}
+
+	return games, err
 }
 
-//^(\*\*)?         # Marker for GOTW
-//(?:\#(\d+)\s+)?  # Optional rank for Team 1
-//(.*?)\s+         # Team 1 (home) name in LUKE format
-//(@|vs)\s+        # Whether or not Team 2 is away (@) or if the game is at a neutral site (vs)
-//(?:\#(\d+)\s+)?  # Optional rank for Team 2
-//(.*?)            # Team 2 (away) name in LUKE format
-//\1?\s*$          # Marker for GOTW
+// ^(\*\*)?         # Marker for GOTW
+// (?:\#(\d+)\s+)?  # Optional rank for Team 1
+// (.*?)\s+         # Team 1 (home) name in LUKE format
+// (@|vs)\s+        # Whether or not Team 2 is away (@) or if the game is at a neutral site (vs)
+// (?:\#(\d+)\s+)?  # Optional rank for Team 2
+// (.*?)            # Team 2 (away) name in LUKE format
+// \1?\s*$          # Marker for GOTW
 var gameRe = regexp.MustCompile(`^\s*(\*\*)?\s*(?:#\s*(\d+)\s+)?(.*?)\s+((?i:@|at|vs))\s+(?:#\s*(\d+)\s+)?(.*?)(?:\s*\*\*)?\s*$`)
 
 var noiseRe = regexp.MustCompile(`\s*(?i:Enter\s+(.*?)\s+iff\s+you\s+predict\s+.*?\s+wins\s+by\s+at\s+least\s+(\d+)\s+points)`)
