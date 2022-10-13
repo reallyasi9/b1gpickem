@@ -331,7 +331,7 @@ var gameRe = regexp.MustCompile(`^\s*(\*\*)?\s*(?:#\s*(\d+)\s+)?(.*?)\s+((?i:@|a
 
 var noiseRe = regexp.MustCompile(`\s*(?i:Enter\s+(.*?)\s+iff\s+you\s+predict\s+.*?\s+wins\s+by\s+at\s+least\s+(\d+)\s+points)`)
 
-var sdRe = regexp.MustCompile(`(?i:\s*(.*?)\s+over\s+(.*?)\s+\(\s*(\d+)\s+points,?\s+if\s+correct\s*\))`)
+var sdRe = regexp.MustCompile(`(?i:\s*(?:#\s*\d+\s+)?(.*?)\s+over\s+(?:#\s*\d+\s+)?(.*?)\s+\(\s*(\d+)\s+points,?\s+if\s+correct\s*\))`)
 
 // parseGame parses game information in Luke's default format
 func parseGame(cell string, tl firestore.TeamRefsByName) (matchup firestore.Matchup, homeRank int, awayRank int, gotw bool, found bool, err error) {
