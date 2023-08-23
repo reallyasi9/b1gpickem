@@ -2,13 +2,11 @@ package btsteams
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"strings"
 
 	fs "cloud.google.com/go/firestore"
-	"github.com/AlecAivazis/survey/v2"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
 	"github.com/reallyasi9/b1gpickem/internal/tools/editteams"
 )
@@ -30,52 +28,9 @@ func AddTeams(ctx *Context) error {
 			break
 		}
 
-		fmt.Printf("An error occurred when creating a team lookup map.\nThe name \"%s\" is used by %d teams.\nYou must update the names used by the teams to correct this before continuing.", err2.Name, len(err2.Teams))
-		teamsByName := make(map[string]firestore.Team)
-		teamRefsByName := make(map[string]*fs.DocumentRef)
-		teamNames := []string{}
-		for i, team := range err2.Teams {
-			dispName := fmt.Sprintf("(%s) %s", err2.Refs[i].ID, team.DisplayName())
-			teamsByName[dispName] = team
-			teamRefsByName[dispName] = err2.Refs[i]
-			teamNames = append(teamNames, dispName)
-		}
-		q1 := &survey.MultiSelect{
-			Message: "Which team(s) do you want to edit?",
-			Options: teamNames,
-		}
-		a1 := []string{}
-		err := survey.AskOne(q1, &a1, survey.WithRemoveSelectNone(), survey.WithValidator(survey.MinItems(1)))
+		updateNames, err := editteams.SurveyTeamNames(teams, teamRefs, lookup, err2.Name, err2.Teams, err2.Refs, editteams.OtherName)
 		if err != nil {
 			panic(err)
-		}
-
-		updateNames := make(map[*fs.DocumentRef]firestore.Team)
-		for _, updateTeam := range a1 {
-			q2 := &survey.Input{
-				Message: fmt.Sprintf("Enter the name for team \"%s\" that will replace \"%s\" (leave blank to delete the name from the team)", updateTeam, err2.Name),
-			}
-			var a2 string
-			err := survey.AskOne(q2, &a2, survey.WithValidator(func(val interface{}) error {
-				if str, ok := val.(string); !ok || str == err2.Name {
-					return errors.New("the new name cannot be the same as the old name")
-				}
-				return nil
-			}))
-			if err != nil {
-				panic(err)
-			}
-			t := teamsByName[updateTeam]
-			for i, n := range t.OtherNames {
-				if n == err2.Name {
-					if len(a2) == 0 {
-						t.OtherNames = append(t.OtherNames[:i], t.OtherNames[i+1:]...)
-					} else {
-						t.OtherNames[i] = a2
-					}
-				}
-			}
-			updateNames[teamRefsByName[updateTeam]] = t
 		}
 
 		for ref, t := range updateNames {

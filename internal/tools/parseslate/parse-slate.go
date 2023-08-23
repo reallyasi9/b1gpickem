@@ -82,7 +82,6 @@ func ParseSlate(ctx *Context) error {
 		}
 	}
 
-	// TODO: combine with previous into single function
 	var tlShort firestore.TeamRefsByName
 	var err3 *firestore.DuplicateTeamNameError
 	for {
