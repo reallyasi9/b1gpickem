@@ -31,7 +31,10 @@ func GetPredictions(ctx *Context) error {
 		return fmt.Errorf("GetPredictions: Failed to get teams: %w", err)
 	}
 
-	teamLookup := firestore.NewTeamRefsByOtherName(teams, refs)
+	teamLookup, err := firestore.NewTeamRefsByOtherName(teams, refs)
+	if err != nil {
+		panic(err)
+	}
 	tps, err := pt.Matchups(teamLookup)
 	if err != nil {
 		return fmt.Errorf("GetPredictions: Failed to match teams to refs: %w", err)

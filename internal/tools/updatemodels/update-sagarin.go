@@ -61,7 +61,10 @@ func UpdateSagarin(ctx *Context) error {
 	if err != nil {
 		return fmt.Errorf("GetPredictions: Failed to get teams: %w", err)
 	}
-	teamLookup := firestore.NewTeamRefsByOtherName(teams, refs)
+	teamLookup, err := firestore.NewTeamRefsByOtherName(teams, refs)
+	if err != nil {
+		panic(err)
+	}
 
 	models, refs, err := firestore.GetModels(ctx, ctx.FirestoreClient)
 	if err != nil {

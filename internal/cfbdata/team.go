@@ -46,20 +46,22 @@ func coalesceString(s *string, replacement string) string {
 }
 
 var commonAbbreviations = map[*regexp.Regexp][]string{
-	regexp.MustCompile(`\bSt(\.|ate)?\b`):          {"State", "St", "St."},                                             // Appalachian State
-	regexp.MustCompile(`\bMiss(\.|issippi)\b`):     {"Mississippi", "Miss", "Miss."},                                   // Southern Mississippi
-	regexp.MustCompile(`(?i)\s*\(Oh(\.|io)?\)`):    {" (Ohio)", " (OH)", " (OH.)", " (NTM)", "-Ohio"},                  // Miami (NTM)
-	regexp.MustCompile(`(?i)\s*\(Fl(\.|orida)?\)`): {" (Florida)", " (FL)", " (FL.)", " (Fla.)", " (YTM)", "-Florida"}, // Miami (YTM)
-	regexp.MustCompile(`\bMichigan\b`):             {"Mich."},                                                          // Central Michigan
-	regexp.MustCompile(`\bInternational\b`):        {"Intl."},                                                          // Florida International
-	regexp.MustCompile(`\bTennessee\b`):            {"Tenn."},                                                          // Middle Tennessee State
-	regexp.MustCompile(`\bUMass\b`):                {"Massachusetts"},                                                  // All the Massachusettses
-	regexp.MustCompile(`^UL (.)(.*)$`):             {"Louisiana-${1}${2}", "Louisiana${1}${2}(UL${1})"},                // Louisianas Lafayette and Monroe
-	regexp.MustCompile(`^Troy$`):                   {"Troy St."},                                                       // Troy. Kill me.
-	regexp.MustCompile(`^Kent State$`):             {"Kent"},                                                           // Kent. Kill me.
-	regexp.MustCompile(`Hawai'i`):                  {"Hawaii"},                                                         // Would it kill you to add the appostrophe?
-	regexp.MustCompile(`\bVirginia\b`):             {"Va."},                                                            // West Virginia
-	regexp.MustCompile(`\bIllinois\b`):             {"Ill."},                                                           // More like "Illannoying," am I right?
+	regexp.MustCompile(`\bSt(\.|ate)?\b`):                 {"State", "St", "St."},                                   // Appalachian State
+	regexp.MustCompile(`\bMiss(\.|issippi)\b`):            {"Mississippi", "Miss", "Miss."},                         // Southern Mississippi
+	regexp.MustCompile(`(?i)\s*\(Oh(\.|io)?\)`):           {" (Ohio)", " (OH)", " (OH.)", "-Ohio"},                  // Miami (NTM)
+	regexp.MustCompile(`(?i)\bMiami\s*\(Oh(\.|io)?\)`):    {"Miami (NTM)"},                                          // Miami (NTM)
+	regexp.MustCompile(`(?i)\s*\(Fl(\.|orida)?\)`):        {" (Florida)", " (FL)", " (FL.)", " (Fla.)", "-Florida"}, // Miami (YTM)
+	regexp.MustCompile(`(?i)\bMiami\s*\(Fl(\.|orida)?\)`): {"Miami (YTM)"},                                          // Miami (YTM)
+	regexp.MustCompile(`\bMichigan\b`):                    {"Mich."},                                                // Central Michigan
+	regexp.MustCompile(`\bInternational\b`):               {"Intl."},                                                // Florida International
+	regexp.MustCompile(`\bTennessee\b`):                   {"Tenn."},                                                // Middle Tennessee State
+	regexp.MustCompile(`\bUMass\b`):                       {"Massachusetts"},                                        // All the Massachusettses
+	regexp.MustCompile(`^UL (.)(.*)$`):                    {"Louisiana-${1}${2}", "Louisiana${1}${2}(UL${1})"},      // Louisianas Lafayette and Monroe
+	regexp.MustCompile(`^Troy$`):                          {"Troy St."},                                             // Troy. Kill me.
+	regexp.MustCompile(`^Kent State$`):                    {"Kent"},                                                 // Kent. Kill me.
+	regexp.MustCompile(`Hawai'i`):                         {"Hawaii"},                                               // Would it kill you to add the appostrophe?
+	regexp.MustCompile(`\bVirginia\b`):                    {"Va."},                                                  // West Virginia
+	regexp.MustCompile(`\bIllinois\b`):                    {"Ill."},                                                 // More like "Illannoying," am I right?
 
 	// special Sagarin abbreviations
 	regexp.MustCompile(`^Ole Miss$`):         {"Mississippi"},                   // That's your name. Use it.
@@ -159,6 +161,9 @@ func (t Team) toFirestore() firestore.Team {
 	otherNames = appendNonNilStrings(otherNames, t.AltName1, t.AltName2, t.AltName3, &t.School)
 	otherNames = replaceCommonAbbreviations(otherNames)
 	otherNames = distinctStrings(otherNames)
+	if t.Abbreviation != nil {
+		otherNames = remove(otherNames, *t.Abbreviation)
+	}
 	colors := make([]string, 0)
 	colors = appendNonNilStrings(colors, t.Color, t.AltColor)
 
@@ -166,7 +171,7 @@ func (t Team) toFirestore() firestore.Team {
 
 	ft := firestore.Team{
 		Abbreviation: abbr,
-		ShortNames:   []string{abbr},
+		ShortNames:   []string{},
 		OtherNames:   otherNames,
 		School:       t.School,
 		Mascot:       coalesceString(t.Mascot, "Football Team"),

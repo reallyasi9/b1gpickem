@@ -48,7 +48,10 @@ func ParseSlate(ctx *Context) error {
 		return fmt.Errorf("ParseSlate: failed to get teams: %w", err)
 	}
 
-	tlOther := firestore.NewTeamRefsByOtherName(teams, teamRefs)
+	tlOther, err := firestore.NewTeamRefsByOtherName(teams, teamRefs)
+	if err != nil {
+		panic(err)
+	}
 	tlShort := firestore.NewTeamRefsByShortName(teams, teamRefs)
 
 	slurp, err := io.ReadAll(reader)
