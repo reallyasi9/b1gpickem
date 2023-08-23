@@ -15,6 +15,7 @@ import (
 	fs "cloud.google.com/go/firestore"
 	"cloud.google.com/go/storage"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/tools/editteams"
 	"github.com/tealeg/xlsx"
 )
 
@@ -48,11 +49,72 @@ func ParseSlate(ctx *Context) error {
 		return fmt.Errorf("ParseSlate: failed to get teams: %w", err)
 	}
 
-	tlOther, err := firestore.NewTeamRefsByOtherName(teams, teamRefs)
-	if err != nil {
-		panic(err)
+	var tlOther firestore.TeamRefsByName
+	var err2 *firestore.DuplicateTeamNameError
+	for {
+		tlOther, err2 = firestore.NewTeamRefsByOtherName(teams, teamRefs)
+		if err2 == nil {
+			break
+		}
+
+		updateNames, err := editteams.SurveyTeamNames(teams, teamRefs, tlOther, err2.Name, err2.Teams, err2.Refs, editteams.OtherName)
+		if err != nil {
+			panic(err)
+		}
+
+		for ref, t := range updateNames {
+			fmt.Printf("Updating %s to eliminate %s (names now [%s])\n", ref.ID, err2.Name, strings.Join(t.OtherNames, ", "))
+
+			editContext := &editteams.Context{
+				Context:         ctx.Context,
+				Force:           ctx.Force,
+				DryRun:          ctx.DryRun,
+				FirestoreClient: ctx.FirestoreClient,
+				ID:              ref.ID,
+				Team:            t,
+				Season:          ctx.Season,
+				Append:          false,
+			}
+			err := editteams.EditTeam(editContext)
+			if err != nil {
+				panic(err)
+			}
+		}
 	}
-	tlShort := firestore.NewTeamRefsByShortName(teams, teamRefs)
+
+	// TODO: combine with previous into single function
+	var tlShort firestore.TeamRefsByName
+	var err3 *firestore.DuplicateTeamNameError
+	for {
+		tlShort, err3 = firestore.NewTeamRefsByShortName(teams, teamRefs)
+		if err3 == nil {
+			break
+		}
+
+		updateNames, err := editteams.SurveyTeamNames(teams, teamRefs, tlShort, err3.Name, err3.Teams, err3.Refs, editteams.ShortName)
+		if err != nil {
+			panic(err)
+		}
+
+		for ref, t := range updateNames {
+			fmt.Printf("Updating %s to eliminate %s (names now [%s])\n", ref.ID, err3.Name, strings.Join(t.ShortNames, ", "))
+
+			editContext := &editteams.Context{
+				Context:         ctx.Context,
+				Force:           ctx.Force,
+				DryRun:          ctx.DryRun,
+				FirestoreClient: ctx.FirestoreClient,
+				ID:              ref.ID,
+				Team:            t,
+				Season:          ctx.Season,
+				Append:          false,
+			}
+			err := editteams.EditTeam(editContext)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
 
 	slurp, err := io.ReadAll(reader)
 	if err != nil {

@@ -2,11 +2,13 @@ package editteams
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
 
 	fs "cloud.google.com/go/firestore"
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
@@ -127,4 +129,75 @@ func EditTeam(ctx *Context) error {
 		return fmt.Errorf("EditTeam: error running transaction: %w", err)
 	}
 	return err
+}
+
+type NameType int64
+
+const (
+	ShortName NameType = 0
+	OtherName NameType = 1
+)
+
+func SurveyTeamNames(teams []firestore.Team, teamRefs []*fs.DocumentRef, teamlist firestore.TeamRefsByName, errName string, errTeams []firestore.Team, errRefs []*fs.DocumentRef, nameType NameType) (map[*fs.DocumentRef]firestore.Team, error) {
+	fmt.Printf("An error occurred when creating a team lookup map.\nThe name \"%s\" is used by %d teams.\nYou must update the names used by the teams to correct this before continuing.", errName, len(errTeams))
+	teamsByName := make(map[string]firestore.Team)
+	teamRefsByName := make(map[string]*fs.DocumentRef)
+	teamNames := []string{}
+	for i, team := range errTeams {
+		dispName := fmt.Sprintf("(%s) %s", errRefs[i].ID, team.DisplayName())
+		teamsByName[dispName] = team
+		teamRefsByName[dispName] = errRefs[i]
+		teamNames = append(teamNames, dispName)
+	}
+	q1 := &survey.MultiSelect{
+		Message: "Which team(s) do you want to edit?",
+		Options: teamNames,
+	}
+	a1 := []string{}
+	err := survey.AskOne(q1, &a1, survey.WithRemoveSelectNone(), survey.WithValidator(survey.MinItems(1)))
+	if err != nil {
+		return nil, err
+	}
+
+	updateNames := make(map[*fs.DocumentRef]firestore.Team)
+	for _, updateTeam := range a1 {
+		q2 := &survey.Input{
+			Message: fmt.Sprintf("Enter the name for team \"%s\" that will replace \"%s\" (leave blank to delete the name from the team)", updateTeam, errName),
+		}
+		var a2 string
+		err := survey.AskOne(q2, &a2, survey.WithValidator(func(val interface{}) error {
+			if str, ok := val.(string); !ok || str == errName {
+				return errors.New("the new name cannot be the same as the old name")
+			}
+			return nil
+		}))
+		if err != nil {
+			panic(err)
+		}
+		t := teamsByName[updateTeam]
+		if nameType == ShortName {
+			for i, n := range t.ShortNames {
+				if n == errName {
+					if len(a2) == 0 {
+						t.ShortNames = append(t.ShortNames[:i], t.ShortNames[i+1:]...)
+					} else {
+						t.ShortNames[i] = a2
+					}
+				}
+			}
+		} else {
+			for i, n := range t.OtherNames {
+				if n == errName {
+					if len(a2) == 0 {
+						t.OtherNames = append(t.OtherNames[:i], t.OtherNames[i+1:]...)
+					} else {
+						t.OtherNames[i] = a2
+					}
+				}
+			}
+		}
+		updateNames[teamRefsByName[updateTeam]] = t
+	}
+
+	return updateNames, nil
 }
