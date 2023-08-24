@@ -138,7 +138,11 @@ const (
 	OtherName NameType = 1
 )
 
-func SurveyTeamNames(teams []firestore.Team, teamRefs []*fs.DocumentRef, teamlist firestore.TeamRefsByName, errName string, errTeams []firestore.Team, errRefs []*fs.DocumentRef, nameType NameType) (map[*fs.DocumentRef]firestore.Team, error) {
+func SurveyShortName(tteams []firestore.Team, teamRefs []*fs.DocumentRef, name string) (firestore.Team, string, error) {
+
+}
+
+func SurveyTeamNames(teams []firestore.Team, teamRefs []*fs.DocumentRef, errName string, errTeams []firestore.Team, errRefs []*fs.DocumentRef, nameType NameType) (map[*fs.DocumentRef]firestore.Team, error) {
 	fmt.Printf("An error occurred when creating a team lookup map.\nThe name \"%s\" is used by %d teams.\nYou must update the names used by the teams to correct this before continuing.", errName, len(errTeams))
 	teamsByName := make(map[string]firestore.Team)
 	teamRefsByName := make(map[string]*fs.DocumentRef)
