@@ -28,7 +28,7 @@ func AddTeams(ctx *Context) error {
 			break
 		}
 
-		updateNames, err := editteams.SurveyTeamNames(teams, teamRefs, lookup, err2.Name, err2.Teams, err2.Refs, editteams.OtherName)
+		updateNames, err := editteams.SurveyReplaceName(teams, teamRefs, err2.Name, err2.Teams, err2.Refs, firestore.OtherName)
 		if err != nil {
 			panic(err)
 		}

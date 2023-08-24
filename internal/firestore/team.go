@@ -62,18 +62,56 @@ type Team struct {
 	Venue *firestore.DocumentRef `firestore:"venue"`
 }
 
+// NameType is an enumeration of types of team names (short, other, etc.)
+type NameType int64
+
+const (
+	ShortName NameType = 0
+	OtherName NameType = 1
+)
+
+func (n NameType) String() string {
+	switch n {
+	case ShortName:
+		return "short"
+	case OtherName:
+		return "other"
+	}
+	return "unknown"
+}
+
 type DuplicateTeamNameError struct {
 	// Name is the duplicate name detected
 	Name string
 
 	// NameType is the name type where the duplicate was found (e.g., "short", "other")
-	NameType string
+	NameType NameType
 
 	// Teams are the Team structs where duplicates were detected (in the same order as Refs)
 	Teams []Team
 
 	// Refs are the references to the Team documents where duplicates were detected (in the same order as Teams)
 	Refs []*firestore.DocumentRef
+}
+
+// Error fulfils error interface
+func (err DuplicateTeamNameError) Error() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s (%d teams):\n", err.Name, len(err.Teams)))
+	for _, t := range err.Teams {
+		sb.WriteString(fmt.Sprintf("%s\n", t))
+	}
+	return fmt.Sprintf("duplicate team names of type %s detected: %v", err.NameType.String(), sb.String())
+}
+
+type NameNotFoundError struct {
+	Name     string
+	NameType NameType
+}
+
+// Error fulfills the error interface
+func (s NameNotFoundError) Error() string {
+	return fmt.Sprintf("team %s name '%s' not found", s.NameType, s.Name)
 }
 
 func (t Team) String() string {
@@ -138,7 +176,7 @@ func NewTeamRefsByOtherName(teams []Team, refs []*firestore.DocumentRef) (TeamRe
 				if duplicates == nil {
 					duplicates = &DuplicateTeamNameError{
 						Name:     n,
-						NameType: "other",
+						NameType: OtherName,
 						Teams:    []Team{t, teams[j]},
 						Refs:     []*firestore.DocumentRef{refs[i], refs[j]},
 					}
@@ -168,7 +206,7 @@ func NewTeamRefsByShortName(teams []Team, refs []*firestore.DocumentRef) (TeamRe
 				if duplicates == nil {
 					duplicates = &DuplicateTeamNameError{
 						Name:     n,
-						NameType: "short",
+						NameType: ShortName,
 						Teams:    []Team{t, teams[j]},
 						Refs:     []*firestore.DocumentRef{refs[i], refs[j]},
 					}
@@ -185,14 +223,4 @@ func NewTeamRefsByShortName(teams []Team, refs []*firestore.DocumentRef) (TeamRe
 		}
 	}
 	return byName, nil
-}
-
-// Error fulfils error interface
-func (err *DuplicateTeamNameError) Error() string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s (%d teams):\n", err.Name, len(err.Teams)))
-	for _, t := range err.Teams {
-		sb.WriteString(fmt.Sprintf("%s\n", t))
-	}
-	return fmt.Sprintf("duplicate team names of type %s detected: %v", err.NameType, sb.String())
 }
