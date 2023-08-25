@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"cloud.google.com/go/firestore"
 	fs "cloud.google.com/go/firestore"
 )
 
@@ -62,22 +63,20 @@ func (g Game) String() string {
 
 // GetGames returns a collection of games for a given week.
 func GetGames(ctx context.Context, week *fs.DocumentRef) ([]Game, []*fs.DocumentRef, error) {
-	refs, err := week.Collection(GAMES_COLLECTION).DocumentRefs(ctx).GetAll()
+	gameSnaps, err := week.Collection(GAMES_COLLECTION).Documents(ctx).GetAll()
 	if err != nil {
-		return nil, nil, fmt.Errorf("error getting game document refs for week %s: %w", week.ID, err)
+		return nil, nil, fmt.Errorf("error getting game documents for week %s: %w", week.ID, err)
 	}
-	games := make([]Game, len(refs))
-	for i, r := range refs {
-		ss, err := r.Get(ctx)
-		if err != nil {
-			return nil, nil, fmt.Errorf("error getting game snapshot %s: %w", r.ID, err)
-		}
+	games := make([]Game, len(gameSnaps))
+	refs := make([]*firestore.DocumentRef, len(gameSnaps))
+	for i, ss := range gameSnaps {
 		var g Game
 		err = ss.DataTo(&g)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error getting game snapshot data %s: %w", r.ID, err)
+			return nil, nil, fmt.Errorf("error getting game snapshot data %s: %w", ss.Ref.ID, err)
 		}
 		games[i] = g
+		refs[i] = ss.Ref
 	}
 	return games, refs, nil
 }

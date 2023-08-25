@@ -54,7 +54,7 @@ func Enumerate(ctx *Context) error {
 
 	// Get schedule from most recent season
 	firstWeekNumber := weeks[0].Number
-	schedule, err := bts.MakeSchedule(ctx, fs, seasonRef, firstWeekNumber, season.StreakTeams)
+	schedule, err := bts.MakeSchedule(ctx, seasonRef, firstWeekNumber, season.StreakTeams)
 	if err != nil {
 		return fmt.Errorf("Enumerate: unable to make schedule: %w", err)
 	}

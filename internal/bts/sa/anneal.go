@@ -129,7 +129,7 @@ func Anneal(ctx *Context) error {
 	log.Printf("Built model %v", model)
 
 	// Get schedule from most recent season
-	schedule, err := bts.MakeSchedule(ctx, fs, seasonRef, weekNumber, season.StreakTeams)
+	schedule, err := bts.MakeSchedule(ctx, seasonRef, weekNumber, season.StreakTeams)
 	if err != nil {
 		return fmt.Errorf("Anneal: unable to make schedule: %v", err)
 	}
