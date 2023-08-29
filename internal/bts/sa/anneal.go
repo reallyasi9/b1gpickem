@@ -77,14 +77,30 @@ func Anneal(ctx *Context) error {
 		}
 		sagarinRatings[sag.Team.ID] = sag
 	}
-	log.Printf("latest sagarin ratings discovered: %v", sagarinRatings)
+	log.Printf("latest sagarin ratings discovered for %d teams", len(sagarinRatings))
 
 	// Get the streakers for this week
-	pickerMap, _, err := bpefs.GetRemainingStreaks(ctx, seasonRef, weekRef)
+	pickerDocs, pickerRefs, err := bpefs.GetPickers(ctx, ctx.FirestoreClient)
+	if err != nil {
+		return fmt.Errorf("Anneal: unable to load pickers for fast lookup")
+	}
+	pickerLookup := make(map[string]string)
+	for i, d := range pickerDocs {
+		pickerLookup[pickerRefs[i].ID] = d.LukeName
+	}
+
+	pickerIDMap, _, err := bpefs.GetRemainingStreaks(ctx, seasonRef, weekRef)
 	if err != nil {
 		return fmt.Errorf("Anneal: unable to get remaining streaks: %v", err)
 	}
+
+	// replace IDs with names
+	pickerMap := make(map[string]bpefs.StreakTeamsRemaining)
+	for id, str := range pickerIDMap {
+		pickerMap[pickerLookup[id]] = str
+	}
 	log.Printf("pickers loaded: %+v", pickerMap)
+
 	if !ctx.All {
 		foundPickers := make(map[string]struct{})
 		for _, name := range pickerNames {
@@ -153,7 +169,7 @@ func Anneal(ctx *Context) error {
 		}
 	}
 
-	log.Printf("Pickers loaded:\n%v", players)
+	log.Printf("Pickers readied:\n%v", players)
 
 	// Here we go.
 	// Find the unique users.
