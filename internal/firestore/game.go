@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"cloud.google.com/go/firestore"
 	fs "cloud.google.com/go/firestore"
 )
 
@@ -68,7 +67,7 @@ func GetGames(ctx context.Context, week *fs.DocumentRef) ([]Game, []*fs.Document
 		return nil, nil, fmt.Errorf("error getting game documents for week %s: %w", week.ID, err)
 	}
 	games := make([]Game, len(gameSnaps))
-	refs := make([]*firestore.DocumentRef, len(gameSnaps))
+	refs := make([]*fs.DocumentRef, len(gameSnaps))
 	for i, ss := range gameSnaps {
 		var g Game
 		err = ss.DataTo(&g)

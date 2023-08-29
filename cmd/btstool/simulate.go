@@ -7,6 +7,7 @@ import (
 	"github.com/reallyasi9/b1gpickem/internal/bts/enumerate"
 	"github.com/reallyasi9/b1gpickem/internal/bts/posteriors"
 	"github.com/reallyasi9/b1gpickem/internal/bts/sa"
+	"github.com/reallyasi9/b1gpickem/internal/bts/whatif"
 )
 
 type annealCmd struct {
@@ -88,4 +89,29 @@ func (a *posteriorsCmd) Run(g *globalCmd) error {
 	ctx.Iterations = a.Iterations
 	ctx.Championship = a.Championship
 	return posteriors.Posteriors(ctx)
+}
+
+type whatIfCmd struct {
+	Season   int    `arg:"" help:"Season to simulate. If negative, the current season will be guessed based on today's date."`
+	Week     int    `arg:"" help:"Week to simulate. If negative, the current week will be guessed based on today's date."`
+	Team1    string `arg:"" help:"First team to simulate."`
+	Team2    string `arg:"" help:"Second team to simulate."`
+	Location string `help:"Location of game relative to first team (home, near, neutral, far, or away.)" short:"l" enum:"home,near,neutral,far,away" default:"home"`
+}
+
+func (a *whatIfCmd) Run(g *globalCmd) error {
+	ctx := whatif.NewContext(context.Background())
+	ctx.DryRun = g.DryRun
+	ctx.Force = g.Force
+	var err error
+	ctx.FirestoreClient, err = fs.NewClient(ctx.Context, g.ProjectID)
+	if err != nil {
+		return err
+	}
+	ctx.Season = a.Season
+	ctx.Week = a.Week
+	ctx.Team1 = a.Team1
+	ctx.Team2 = a.Team2
+	ctx.Location = a.Location
+	return whatif.WhatIf(ctx)
 }
