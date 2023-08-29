@@ -80,42 +80,36 @@ func WhatIf(ctx *Context) error {
 
 	// Filter teams
 	// Get teams by short name first
-	teamsByShortName, errs := bpefs.MakeTeamRefCollection(teams, teamRefs, bpefs.ShortName)
-	for _, err := range errs {
-		idxs, names, err2 := editteams.SurveyReplaceName(teamsByShortName, err)
-		if err2 != nil {
-			return fmt.Errorf("Posteriors: failed to replace names: %w", err2)
+	var teamsByShortName bpefs.TeamRefsByName
+	var err2 *bpefs.DuplicateTeamNameError
+	for {
+		teamsByShortName, err2 = bpefs.NewTeamRefsByShortName(teams, teamRefs)
+		if err2 == nil {
+			break
 		}
 
-		for i := range idxs {
-			tr := teamsByShortName.ValueAt(i)
-			n := names[i]
+		updateNames, err := editteams.SurveyReplaceName(teams, teamRefs, err2.Name, err2.Teams, err2.Refs, bpefs.ShortName)
+		if err != nil {
+			panic(err)
+		}
 
-			// Replace the name in the team
-			for j, sn := range tr.Team.ShortNames {
-				if sn == err.Name {
-					tr.Team.ShortNames[j] = n
-				}
-			}
-
-			fmt.Printf("Updating %s to change %s (names now [%s])\n", tr.Ref.ID, err.Name, strings.Join(tr.Team.ShortNames, ", "))
+		for ref, t := range updateNames {
+			fmt.Printf("Updating %s to change %s (names now [%s])\n", ref.ID, err2.Name, strings.Join(t.ShortNames, ", "))
 
 			editContext := &editteams.Context{
 				Context:         ctx.Context,
 				Force:           ctx.Force,
 				DryRun:          ctx.DryRun,
 				FirestoreClient: ctx.FirestoreClient,
-				ID:              tr.Ref.ID,
-				Team:            tr.Team,
+				ID:              ref.ID,
+				Team:            t,
 				Season:          ctx.Season,
 				Append:          false,
 			}
-			err3 := editteams.EditTeam(editContext)
-			if err3 != nil {
-				panic(err3)
+			err := editteams.EditTeam(editContext)
+			if err != nil {
+				panic(err)
 			}
-
-			teamsByShortName.UpdateMap(err.Name, n)
 		}
 	}
 
