@@ -13,9 +13,9 @@ import (
 type annealCmd struct {
 	Season    int      `arg:"" help:"Season to simulate. If negative, the current season will be guessed based on today's date."`
 	Week      int      `arg:"" help:"Week to simulate. If negative, the current week will be guessed based on today's date."`
-	Streakers []string `arg:"" help:"Streakers to simulate."`
+	Streakers []string `arg:"" help:"Streakers to simulate." xor:"streakers" required:""`
 
-	All bool `help:"Ignore streakers list and simulate all registered pickers still streaking in the given week."`
+	All bool `help:"Ignore streakers list and simulate all registered pickers still streaking in the given week." xor:"streakers" required:""`
 
 	Seed        int64   `help:"Random seed. Negative values will use the system clock to seed the RNG." default:"-1"`
 	Workers     int     `help:"Number of workers per simulated streaker." short:"n" default:"1"`

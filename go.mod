@@ -8,6 +8,7 @@ require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/alecthomas/kong v0.2.18
 	github.com/atgjack/prob v0.0.0-20161220081030-6cfd5d401186
+	github.com/jedib0t/go-pretty/v6 v6.4.7
 	github.com/schollz/progressbar/v3 v3.8.5
 	github.com/segmentio/fasthash v1.0.3
 	github.com/tealeg/xlsx v1.0.5

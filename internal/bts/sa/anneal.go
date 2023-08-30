@@ -5,11 +5,13 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"os"
 	"sort"
 	"sync"
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/reallyasi9/b1gpickem/internal/bts"
 
 	bpefs "github.com/reallyasi9/b1gpickem/internal/firestore"
@@ -116,7 +118,23 @@ func Anneal(ctx *Context) error {
 		}
 		log.Printf("pickers selected: %+v", pickerMap)
 	} else {
-		log.Printf("all pickers selected with -all flag")
+		log.Printf("all pickers selected with --all flag")
+	}
+
+	// Get team names for pretty printing
+	teamDocs, err := ctx.FirestoreClient.GetAll(ctx, season.StreakTeams)
+	if err != nil {
+		return fmt.Errorf("Anneal: unable to get teams for pretty printing: %w", err)
+	}
+	teamNamesByID := make(map[string]string)
+	for _, td := range teamDocs {
+		id := td.Ref.ID
+		var t bpefs.Team
+		err := td.DataTo(&t)
+		if err != nil {
+			return fmt.Errorf("Anneal: unable to translate team from %+v to Team object: %w", td, err)
+		}
+		teamNamesByID[id] = t.School
 	}
 
 	// Get most recent performances for sagarin
@@ -202,6 +220,8 @@ func Anneal(ctx *Context) error {
 	streakOptions := collectByPlayer(bestStreaks, players, predictions, &schedule, seasonRef, weekRef, duplicates)
 
 	// Print results
+	prettyPrint(streakOptions, teamNamesByID)
+
 	output := weekRef.Collection(bpefs.STEAK_PREDICTIONS_COLLECTION)
 
 	if ctx.DryRun {
@@ -216,8 +236,6 @@ func Anneal(ctx *Context) error {
 			continue
 		}
 
-		log.Printf("Writing:\n%+v", streak)
-
 		_, _, err := output.Add(ctx, streak)
 		if err != nil {
 			return fmt.Errorf("Anneal: unable to write streak to Firestore: %v", err)
@@ -225,6 +243,36 @@ func Anneal(ctx *Context) error {
 	}
 
 	return nil
+}
+
+func prettyPrint(streaks map[string]bpefs.StreakPredictions, teamNamesByID map[string]string) {
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"Picker", "Week", "Team", "Win Prob.", "Pred. Spread", "Cum. Prob.", "Cum. Spread"})
+	t.SetColumnConfigs([]table.ColumnConfig{
+		{Number: 1, AutoMerge: true},
+		{Number: 2, AutoMerge: true},
+	})
+	for picker, streak := range streaks {
+		// picker := pickerNamesByID[streak.Picker.ID]
+		bestPick := streak.PossiblePicks[0]
+		currentProb := float64(1)
+		currentSpread := float64(0)
+		for iwk, streak := range bestPick.Weeks {
+			for ipk, pick := range streak.Pick {
+				team := teamNamesByID[pick.ID]
+				prob := streak.Probabilities[ipk]
+				spread := streak.Spreads[ipk]
+				currentProb *= prob
+				currentSpread += spread
+				t.AppendRow(table.Row{picker, iwk, team, fmt.Sprintf("%0.4f", prob), fmt.Sprintf("%0.2f", spread), fmt.Sprintf("%0.4f", currentProb), fmt.Sprintf("%0.2f", currentSpread)})
+			}
+		}
+		t.AppendSeparator()
+	}
+
+	t.SetStyle(table.StyleLight)
+	t.Render()
 }
 
 // StreakMap is a simple map of player names to streaks
