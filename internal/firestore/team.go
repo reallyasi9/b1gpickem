@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"cloud.google.com/go/firestore"
+	"github.com/jedib0t/go-pretty/v6/list"
 	"google.golang.org/api/iterator"
 )
 
@@ -115,27 +116,22 @@ func (s NameNotFoundError) Error() string {
 }
 
 func (t Team) String() string {
-	var sb strings.Builder
-	sb.WriteString("Team\n")
-	ss := make([]string, 0)
-	ss = append(ss, treeString("Abbreviation", 0, false, t.Abbreviation))
-	ss = append(ss, treeStringSlice("ShortNames", 0, false, t.ShortNames))
-	ss = append(ss, treeStringSlice("OtherNames", 0, false, t.OtherNames))
-	ss = append(ss, treeString("School", 0, false, t.School))
-	ss = append(ss, treeString("Mascot", 0, false, t.Mascot))
-	ss = append(ss, treeStringSlice("Colors", 0, false, t.Colors))
-	ss = append(ss, treeStringSlice("Logos", 0, false, t.Logos))
-	ss = append(ss, treeRef("Venue", 0, true, t.Venue))
-	sb.WriteString(strings.Join(ss, "\n"))
-	return sb.String()
+	return fmt.Sprintf("%s %s", t.School, t.Mascot)
 }
 
-func (t Team) DisplayName() string {
-	var sb strings.Builder
-	sb.WriteString(t.School)
-	sb.WriteRune(' ')
-	sb.WriteString(t.Mascot)
-	return sb.String()
+func (t Team) Pretty() string {
+	l := list.NewWriter()
+	l.SetStyle(list.StyleConnectedLight)
+	l.AppendItem(fmt.Sprintf("%s (%s)", t.String(), t.Abbreviation))
+	l.AppendItem("Other names")
+	l.Indent()
+	l.AppendItems([]interface{}{t.OtherNames})
+	l.UnIndent()
+	l.AppendItem("Short names")
+	l.Indent()
+	l.AppendItems([]interface{}{t.ShortNames})
+	l.UnIndent()
+	return l.Render()
 }
 
 // GetTeams returns a collection of teams for a given season.

@@ -3,7 +3,6 @@ package firestore
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	fs "cloud.google.com/go/firestore"
@@ -40,24 +39,25 @@ type Game struct {
 }
 
 func (g Game) String() string {
-	var sb strings.Builder
-	sb.WriteString("Game\n")
-	sb.WriteString(treeRef("HomeTeam", 0, false, g.HomeTeam))
-	sb.WriteRune('\n')
-	sb.WriteString(treeRef("AwayTeam", 0, false, g.AwayTeam))
-	sb.WriteRune('\n')
-	sb.WriteString(treeString("StartTime", 0, false, g.StartTime.Format(time.UnixDate)))
-	sb.WriteRune('\n')
-	sb.WriteString(treeBool("StartTimeTBD", 0, false, g.StartTimeTBD))
-	sb.WriteRune('\n')
-	sb.WriteString(treeBool("NeutralSite", 0, false, g.NeutralSite))
-	sb.WriteRune('\n')
-	sb.WriteString(treeRef("Venue", 0, false, g.Venue))
-	sb.WriteRune('\n')
-	sb.WriteString(treeIntPtr("HomePoints", 0, false, g.HomePoints))
-	sb.WriteRune('\n')
-	sb.WriteString(treeIntPtr("AwayPoints", 0, true, g.AwayPoints))
-	return sb.String()
+	vs := "@"
+	if g.NeutralSite {
+		vs = "vs."
+	}
+	t := ""
+	if g.StartTimeTBD {
+		t = "time TBD"
+	} else {
+		t = g.StartTime.Format(time.UnixDate)
+	}
+	ap := ""
+	if g.AwayPoints != nil {
+		ap = fmt.Sprintf(" (%d)", *g.AwayPoints)
+	}
+	hp := ""
+	if g.HomePoints != nil {
+		hp = fmt.Sprintf(" (%d)", *g.HomePoints)
+	}
+	return fmt.Sprintf("%s%s %s %s%s at %s (%s)", g.AwayTeam.ID, ap, vs, g.HomeTeam.ID, hp, g.Venue.ID, t)
 }
 
 // GetGames returns a collection of games for a given week.
