@@ -2,18 +2,20 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
 
 	fs "cloud.google.com/go/firestore"
 	"github.com/alecthomas/kong"
+	"github.com/reallyasi9/b1gpickem/internal/bts"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
 )
 
 type CLI struct {
 	ProjectID        string `help:"GCP project ID." env:"GCP_PROJECT" required:""`
-	StraightUpModel  string `help:"Model to use for straight-up games. Default fallback is to use the model with the most straight-up wins to date." short:"s"`
+	StraightUpModel  string `help:"Model to use for straight-up games. Default fallback is to use the model with the most straight-up wins to date, otherwise uses Sagarin scores." short:"s"`
 	NoisySpreadModel string `help:"Model to use for noisy-spread games. Default fallback is to use the straight-up model, otherwise the model with the smallest MAE to date." short:"n"`
 	SuperdogModel    string `help:"Model to use for superdog games. Default fallback is to use the noisy-spread model, otherwise the model with the smallest MAE to date." short:"d"`
 	Fallback         bool   `help:"Use fallback models when specified models are undefined."`
@@ -21,7 +23,7 @@ type CLI struct {
 	Force            bool   `help:"Force overwrite data in the database."`
 	Season           int    `arg:"" help:"Season year." required:""`
 	Week             int    `arg:"" help:"Week number." required:""`
-	Picker           string `help:"Picker (for selecting BTS team, if available)."`
+	Picker           string `arg:"" help:"Picker who is making picks." required:""`
 }
 
 func main() {
@@ -55,6 +57,17 @@ func (cli CLI) Run() error {
 	}
 	log.Printf("Using week %s", weekRef.ID)
 
+	games, gameRefs, err := firestore.GetGames(ctx, weekRef)
+	if err != nil {
+		return fmt.Errorf("failed to get all games from week %s: %w", weekRef.ID, err)
+	}
+	gamesByID := make(map[string]firestore.Game)
+	gameRefsByID := make(map[string]*fs.DocumentRef)
+	for i, ref := range gameRefs {
+		gamesByID[ref.ID] = games[i]
+		gameRefsByID[ref.ID] = ref
+	}
+
 	slateSSs, err := weekRef.Collection(firestore.SLATES_COLLECTION).OrderBy("parsed", fs.Desc).Limit(1).Documents(ctx).GetAll()
 	if err != nil {
 		return fmt.Errorf("failed to get most recent slate from Firestore: %w", err)
@@ -70,19 +83,49 @@ func (cli CLI) Run() error {
 	}
 	log.Printf("Read %d games from slate at path '%s'", len(sgss), slateRef.Path)
 
-	perfs, _, err := firestore.GetMostRecentModelPerformances(ctx, fsClient, weekRef)
+	perfs, perfRefs, err := firestore.GetMostRecentModelPerformances(ctx, fsClient, weekRef)
 	if err != nil {
 		return fmt.Errorf("failed to get model performances: %w\nHave you run `b1gtool models update` yet?", err)
 	}
 
-	models, modelRefs, err := firestore.GetModels(ctx, fsClient)
+	// Get most recent Sagarin Ratings for backup
+	// I can cheat because I know this already.
+	sagPointsRef := weekRef.Collection("team-points").Doc("sagarin")
+	sagSnaps, err := sagPointsRef.Collection("linesag").Documents(ctx).GetAll()
 	if err != nil {
-		return fmt.Errorf("failed to get model information: %w\nHave you run `b1gtool models setup` yet?", err)
+		return fmt.Errorf("unable to get sagarin ratings: %w", err)
 	}
-	modelLookup := firestore.NewModelRefsBySystem(models, modelRefs)
+	sagarinRatings := make(map[string]firestore.ModelTeamPoints)
+	for _, s := range sagSnaps {
+		var sag firestore.ModelTeamPoints
+		err = s.DataTo(&sag)
+		if err != nil {
+			return fmt.Errorf("unable to get sagarin rating: %w", err)
+		}
+		// Sagarin has one nil team representing a non-recorded team. Don't keep that one.
+		if sag.Team == nil {
+			continue
+		}
+		sagarinRatings[sag.Team.ID] = sag
+	}
 
-	picks := make([]firestore.Pick, len(sgss))
-	dogs := make([]dogPick, 0)
+	var sagPerf *firestore.ModelPerformance
+	for _, perf := range perfs {
+		if perf.Model.ID == "linesag" {
+			sagPerf = &perf
+			break
+		}
+	}
+	if sagPerf == nil {
+		return fmt.Errorf("unable to find most recent Sagarin performance for the week")
+	}
+
+	// Build the probability model
+	model := bts.NewGaussianSpreadModel(sagarinRatings, *sagPerf)
+	log.Printf("Built Sagarin fallback model %v", model)
+
+	picks := make([]*firestore.Pick, len(sgss))
+	dogs := make([]DogPick, 0)
 	for i, ss := range sgss {
 		var sgame firestore.SlateGame
 		err = ss.DataTo(&sgame)
@@ -90,34 +133,39 @@ func (cli CLI) Run() error {
 			return fmt.Errorf("failed to convert SlateGame at path '%s': %w", ss.Ref.Path, err)
 		}
 
-		gamess, err := sgame.Game.Get(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get game at path '%s': %w", sgame.Game.Path, err)
-		}
-		var game firestore.Game
-		err = gamess.DataTo(&game)
-		if err != nil {
-			return fmt.Errorf("failed to convert Game at path '%s': %w", gamess.Ref.Path, err)
+		game, ok := gamesByID[sgame.Game.ID]
+		if !ok {
+			return fmt.Errorf("slate game refers to game at path '%s', which is not present in week %s", sgame.Game.Path, weekRef.ID)
 		}
 
-		var modelChoice *fs.DocumentRef
+		gp, err := NewGamePredictions(ctx, game, sgame, ss.Ref, perfs, perfRefs)
+		if err != nil {
+			return fmt.Errorf("unable to make game predictions lookup object: %w", err)
+		}
+
+		var preferredModel string
 		var gt gameType
 		switch {
 		case sgame.NoisySpread != 0:
-			modelChoice = modelLookup[cli.NoisySpreadModel]
+			preferredModel = cli.NoisySpreadModel
 			gt = noisySpread
 		case sgame.Superdog:
-			modelChoice = modelLookup[cli.SuperdogModel]
+			preferredModel = cli.SuperdogModel
 			gt = superdog
 		default:
-			modelChoice = modelLookup[cli.StraightUpModel]
+			preferredModel = cli.StraightUpModel
 			gt = straightUp
 		}
 
-		pick, err := pickEm(ctx, fsClient, ss.Ref, perfs, modelChoice, gt, cli.Fallback)
-		if err != nil {
-			return fmt.Errorf("failed to pick Game '%s': %w", gamess.Ref.Path, err)
+		pick, err := gp.Pick(preferredModel)
+		var nfErr ModelNotFoundError
+		if errors.As(err, &nfErr) && cli.Fallback {
+			pick, err = gp.Fallback(model)
 		}
+		if err != nil {
+			return fmt.Errorf("unable to make pick of slate game %s: %w", sgame, err)
+		}
+
 		if gt == superdog {
 			// reverse superdog picks
 			if pick.PickedTeam.ID == game.HomeTeam.ID {
@@ -126,14 +174,14 @@ func (cli CLI) Run() error {
 				pick.PickedTeam = game.HomeTeam
 			}
 			pick.PredictedProbability = 1 - pick.PredictedProbability
-			dogs = append(dogs, dogPick{teamID: pick.PickedTeam.ID, points: sgame.Value, prob: pick.PredictedProbability})
+			dogs = append(dogs, DogPick{teamID: pick.PickedTeam.ID, points: sgame.Value, prob: pick.PredictedProbability})
 		}
 		picks[i] = pick
 	}
 
 	// Pick dog by unpicking undogs. Huh.
 	if len(dogs) > 0 {
-		sort.Sort(sort.Reverse(byValue(dogs)))
+		sort.Sort(sort.Reverse(ByValue(dogs)))
 		unpickedDogs := make(map[string]struct{})
 		for _, dog := range dogs[1:] {
 			unpickedDogs[dog.teamID] = struct{}{}
@@ -148,10 +196,9 @@ func (cli CLI) Run() error {
 
 	var sp *firestore.StreakPick
 	s, spRef, err := firestore.GetStreakPredictions(ctx, weekRef, pkRef)
-	if err != nil {
-		if _, ok := err.(firestore.NoStreakPickError); !ok {
-			return fmt.Errorf("failed to lookup streak prediction for picker '%s': %w", cli.Picker, err)
-		}
+	var nspErr firestore.NoStreakPickError
+	if err != nil && !errors.As(err, &nspErr) {
+		return fmt.Errorf("failed to lookup streak prediction for picker '%s': %w", cli.Picker, err)
 	} else if spRef != nil {
 		sp = &firestore.StreakPick{
 			PickedTeams:          s.BestPick,
@@ -181,9 +228,9 @@ func (cli CLI) Run() error {
 			pick.Picker = pkRef
 			pickRef := picksCollection.NewDoc()
 			if cli.Force {
-				err = t.Set(pickRef, &pick)
+				err = t.Set(pickRef, pick)
 			} else {
-				err = t.Create(pickRef, &pick)
+				err = t.Create(pickRef, pick)
 			}
 			if err != nil {
 				return err
@@ -204,7 +251,7 @@ func (cli CLI) Run() error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("fialed running transaction: %w", err)
+		return fmt.Errorf("failed running transaction: %w", err)
 	}
 
 	return nil
@@ -217,187 +264,3 @@ const (
 	noisySpread
 	superdog
 )
-
-func pickEm(
-	ctx context.Context,
-	fsClient *fs.Client,
-	sg *fs.DocumentRef,
-	perfs []firestore.ModelPerformance,
-	modelChoice *fs.DocumentRef,
-	gt gameType,
-	fallback bool) (firestore.Pick, error) {
-	// TODO: fill out Pick from SlateGame
-	p := firestore.Pick{
-		SlateGame: sg,
-	}
-
-	ss, err := sg.Get(ctx)
-	if err != nil {
-		return p, fmt.Errorf("unable to get slate game '%s': %w", sg.Path, err)
-	}
-	var sgame firestore.SlateGame
-	err = ss.DataTo(&sgame)
-	if err != nil {
-		return p, fmt.Errorf("unable to build SlateGame from '%s': %w", sg.Path, err)
-	}
-
-	predictions, predRefs, err := firestore.GetPredictions(ctx, fsClient, sgame.Game)
-	if err != nil {
-		return p, fmt.Errorf("unable to get predictions for slate game '%s': %w", sgame.Game.Path, err)
-	}
-
-	ss, err = sgame.Game.Get(ctx)
-	if err != nil {
-		return p, fmt.Errorf("unable to get game '%s': %w", sgame.Game.Path, err)
-	}
-	var game firestore.Game
-	err = ss.DataTo(&game)
-	if err != nil {
-		return p, fmt.Errorf("unable to build Game from '%s': %w", sgame.Game.Path, err)
-	}
-
-	// If a specific choice is made, try to get that first.
-	if modelChoice != nil {
-		// simple linear search will do
-		var pred firestore.ModelPrediction
-		var nilPred firestore.ModelPrediction
-		var i int
-		for i, pred = range predictions {
-			if pred.Model.Path == modelChoice.Path {
-				break
-			}
-		}
-		log.Printf("Using model %s to pick game %s", pred.Model.ID, ss.Ref.ID)
-		predRef := predRefs[i]
-		var perf firestore.ModelPerformance
-		var nilPerf firestore.ModelPerformance
-		for _, perf = range perfs {
-			if perf.Model.Path == modelChoice.Path {
-				break
-			}
-		}
-		// use the prediction to fill out the pick
-		if pred != nilPred && perf != nilPerf {
-			p.FillOut(game, perf, pred, predRef, sgame.NoisySpread)
-			return p, nil
-		}
-	}
-	if !fallback {
-		return p, fmt.Errorf("no predictions for game '%s' and no fallback specified", sgame.Game.Path)
-	}
-
-	// fallback onto best
-	log.Printf("Using fallback model to pick game %s", ss.Ref.ID)
-	pred, predRef, perf, err := getFallbackPrediction(ctx, predictions, predRefs, perfs, gt)
-	if err != nil {
-		return p, fmt.Errorf("unable to get fallback prediction: %w", err)
-	}
-	p.FillOut(game, perf, pred, predRef, sgame.NoisySpread)
-
-	return p, nil
-}
-
-func getFallbackPrediction(ctx context.Context, preds []firestore.ModelPrediction, predRefs []*fs.DocumentRef, ps []firestore.ModelPerformance, gt gameType) (bestPred firestore.ModelPrediction, predRef *fs.DocumentRef, bestPerf firestore.ModelPerformance, err error) {
-	if len(preds) == 0 {
-		err = fmt.Errorf("unable to get fallback prediction: no predictions for game")
-		return
-	}
-
-	switch gt {
-	case straightUp:
-		sort.Sort(sort.Reverse(byWins(ps)))
-	case noisySpread:
-		fallthrough
-	case superdog:
-		sort.Sort(byMSE(ps))
-	default:
-		err = fmt.Errorf("unable to get fallback prediction: unrecognized game type %v", gt)
-		return
-	}
-
-	// Look for the best in the predictions I have
-	predByModelID := make(map[string]firestore.ModelPrediction)
-	refByModelID := make(map[string]*fs.DocumentRef)
-	for i, pred := range preds {
-		predByModelID[pred.Model.ID] = pred
-		refByModelID[pred.Model.ID] = predRefs[i]
-	}
-
-	for _, perf := range ps {
-		var ok bool
-		if bestPred, ok = predByModelID[perf.Model.ID]; ok {
-			bestPerf = perf
-			predRef = refByModelID[perf.Model.ID]
-			break
-		}
-	}
-	var noPred firestore.ModelPrediction
-	if bestPred == noPred {
-		err = fmt.Errorf("unable to get fallback model: no predictions match")
-	}
-	log.Printf("Fallback model chosen: %s", bestPred.Model.ID)
-
-	return
-}
-
-type byWins []firestore.ModelPerformance
-
-// Len implements Sortable interface
-func (b byWins) Len() int {
-	return len(b)
-}
-
-// Less implements Sortable interface
-func (b byWins) Less(i, j int) bool {
-	return b[i].Wins < b[j].Wins
-}
-
-// Swap implements Sortable interface
-func (b byWins) Swap(i, j int) {
-	b[i], b[j] = b[j], b[i]
-}
-
-type byMSE []firestore.ModelPerformance
-
-// Len implements Sortable interface
-func (b byMSE) Len() int {
-	return len(b)
-}
-
-// Less implements Sortable interface
-func (b byMSE) Less(i, j int) bool {
-	return b[i].MSE < b[j].MSE
-}
-
-// Swap implements Sortable interface
-func (b byMSE) Swap(i, j int) {
-	b[i], b[j] = b[j], b[i]
-}
-
-type dogPick struct {
-	teamID string
-	points int
-	prob   float64
-}
-
-type byValue []dogPick
-
-// Len implements Sortable interface
-func (b byValue) Len() int {
-	return len(b)
-}
-
-// Less implements Sortable interface
-func (b byValue) Less(i, j int) bool {
-	vi := b[i].prob * float64(b[i].points)
-	vj := b[j].prob * float64(b[j].points)
-	if vi == vj {
-		return b[i].points < b[j].points
-	}
-	return vi < vj
-}
-
-// Swap implements Sortable interface
-func (b byValue) Swap(i, j int) {
-	b[i], b[j] = b[j], b[i]
-}

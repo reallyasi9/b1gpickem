@@ -12,6 +12,8 @@ import (
 type PredictionModel interface {
 	MostLikelyOutcome(*Game) (team Team, prob float64, spread float64)
 	Predict(*Game) (prob float64, spread float64)
+	MostLikelyNoisySpreadOutcome(*Game, float64) (team Team, prob float64, spread float64)
+	PredictNoisySpread(*Game, float64) (prob float64, spread float64)
 }
 
 // GaussianSpreadModel implements PredictionModel and uses a normal distribution based on spreads to calculate win probabilities.
@@ -40,6 +42,21 @@ func (m GaussianSpreadModel) Predict(game *Game) (float64, float64) {
 	return prob, spread
 }
 
+// PredictNoisySpread returns the probability that team1 beats the given spread and the predicted spread for team1.
+// The noisy spread is relative to team1.
+func (m GaussianSpreadModel) PredictNoisySpread(game *Game, noisySpread float64) (float64, float64) {
+	if game.Team(0) == BYE || game.Team(1) == BYE {
+		return 0., 0.
+	}
+	if game.Team(0) == NONE || game.Team(1) == NONE {
+		return 1., 0.
+	}
+	spread := m.spread(game)
+	prob := m.dist.Cdf(spread - noisySpread)
+
+	return prob, spread
+}
+
 // MostLikelyOutcome returns the most likely team to win a given game, the probability of win, and the predicted spread.
 func (m GaussianSpreadModel) MostLikelyOutcome(game *Game) (Team, float64, float64) {
 	if game.Team(0) == BYE || game.Team(1) == BYE {
@@ -50,6 +67,21 @@ func (m GaussianSpreadModel) MostLikelyOutcome(game *Game) (Team, float64, float
 	}
 	prob, spread := m.Predict(game)
 	if spread < 0 {
+		return game.Team(1), 1 - prob, -spread
+	}
+	return game.Team(0), prob, spread
+}
+
+// MostLikelyNoisySpreadOutcome returns the most likely team to win a given noisy spread game, the probability of beating the spread, and the predicted spread.
+func (m GaussianSpreadModel) MostLikelyNoisySpreadOutcome(game *Game, noisySpread float64) (Team, float64, float64) {
+	if game.Team(0) == BYE || game.Team(1) == BYE {
+		return BYE, 0., 0.
+	}
+	if game.Team(0) == NONE || game.Team(1) == NONE {
+		return NONE, 1., 0.
+	}
+	prob, spread := m.PredictNoisySpread(game, noisySpread)
+	if prob < 0.5 {
 		return game.Team(1), 1 - prob, -spread
 	}
 	return game.Team(0), prob, spread
@@ -144,6 +176,31 @@ func (m OracleModel) MostLikelyOutcome(g *Game) (team Team, prob float64, spread
 	return
 }
 
+// MostLikelyNoisySpreadOutcome returns whether or not team1 historically beat the given spread, a probability of 1, and the actual spread.
+// If the two teams did not play each other, returns g.team1 and a probability and spread of zero.
+// The noisy spread is positive in the direction of team1 winning.
+func (m OracleModel) MostLikelyNoisySpreadOutcome(g *Game, noisySpread float64) (team Team, prob float64, spread float64) {
+	if g.Team(0) == BYE || g.Team(1) == BYE {
+		return BYE, 0., 0.
+	}
+	if g.Team(0) == NONE || g.Team(1) == NONE {
+		return NONE, 1., 0.
+	}
+
+	var ok bool
+	team = g.Team(0)
+	spread, ok = m.results[*g]
+	if !ok {
+		return
+	}
+	prob = 1
+	if spread < noisySpread {
+		team = g.Team(1)
+		spread *= -1
+	}
+	return
+}
+
 // Predict returns a probability of 1 if g.team1 won the game, a probability of 0 if g.team1 lost (or the game did not happen), and a spread equal to the scoring margin (or zero if the game did not happen).
 func (m OracleModel) Predict(g *Game) (prob float64, spread float64) {
 	if g.Team(0) == BYE || g.Team(1) == BYE {
@@ -159,6 +216,26 @@ func (m OracleModel) Predict(g *Game) (prob float64, spread float64) {
 		return
 	}
 	if spread > 0 {
+		prob = 1
+	}
+	return
+}
+
+// PredictNoisySpread returns a probability of 1 if g.team1 beat the given spread, a probability of 0 if g.team1 did not (or the game did not happen), and a spread equal to the scoring margin (or zero if the game did not happen).
+func (m OracleModel) PredictNoisySpread(g *Game, noisySpread float64) (prob float64, spread float64) {
+	if g.Team(0) == BYE || g.Team(1) == BYE {
+		return 0., 0.
+	}
+	if g.Team(0) == NONE || g.Team(1) == NONE {
+		return 1., 0.
+	}
+
+	var ok bool
+	spread, ok = m.results[*g]
+	if !ok {
+		return
+	}
+	if spread > noisySpread {
 		prob = 1
 	}
 	return

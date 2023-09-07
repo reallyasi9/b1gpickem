@@ -52,9 +52,9 @@ func Pickem(ctx *Context) error {
 		return fmt.Errorf("Pickem: failed to get teams: %w", err)
 	}
 
-	teamLookup, err := firestore.NewTeamRefsByOtherName(teams, teamRefs)
-	if err != nil {
-		panic(err)
+	teamLookup, err2 := firestore.NewTeamRefsByOtherName(teams, teamRefs)
+	if err2 != nil {
+		panic(err2)
 	}
 
 	picksToUpdate := make(map[string]firestore.Pick)
