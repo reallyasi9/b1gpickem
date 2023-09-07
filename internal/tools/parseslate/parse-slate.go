@@ -236,7 +236,7 @@ func getFileOrGSReader(ctx context.Context, f string) (io.ReadCloser, error) {
 			return nil, err
 		}
 		bucket := gsClient.Bucket(u.Host)
-		obj := bucket.Object(u.Path)
+		obj := bucket.Object(strings.Trim(u.Path, "/"))
 		r, err = obj.NewReader(ctx)
 		if err != nil {
 			return nil, err
@@ -302,7 +302,7 @@ func getCreationTime(ctx context.Context, f string) (time.Time, error) {
 			return t, err
 		}
 		bucket := gsClient.Bucket(u.Host)
-		obj := bucket.Object(u.Path)
+		obj := bucket.Object(strings.Trim(u.Path, "/"))
 		attrs, err := obj.Attrs(ctx)
 		if err != nil {
 			return t, err

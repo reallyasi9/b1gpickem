@@ -141,11 +141,11 @@ func SurveyAddName(teams []firestore.Team, teamRefs []*fs.DocumentRef, name stri
 	teamNames := []string{}
 	teamNameOnly := []string{}
 	for i, team := range teams {
-		dispName := fmt.Sprintf("(%s) %s", teamRefs[i].ID, team.DisplayName())
+		dispName := fmt.Sprintf("(%s) %s", teamRefs[i].ID, team)
 		teamsByName[dispName] = team
 		teamRefsByName[dispName] = teamRefs[i]
 		teamNames = append(teamNames, dispName)
-		teamNameOnly = append(teamNameOnly, team.DisplayName())
+		teamNameOnly = append(teamNameOnly, team.String())
 	}
 	sort.Sort(ByOther[string, string]{teamNames, teamNameOnly})
 	q1 := &survey.Select{
@@ -179,11 +179,11 @@ func SurveyReplaceName(teams []firestore.Team, teamRefs []*fs.DocumentRef, errNa
 	teamNames := []string{}
 	teamNameOnly := []string{}
 	for i, team := range errTeams {
-		dispName := fmt.Sprintf("(%s) %s", errRefs[i].ID, team.DisplayName())
+		dispName := fmt.Sprintf("(%s) %s", errRefs[i].ID, team)
 		teamsByName[dispName] = team
 		teamRefsByName[dispName] = errRefs[i]
 		teamNames = append(teamNames, dispName)
-		teamNameOnly = append(teamNameOnly, team.DisplayName())
+		teamNameOnly = append(teamNameOnly, team.String())
 	}
 	sort.Sort(ByOther[string, string]{teamNames, teamNameOnly})
 	q1 := &survey.MultiSelect{

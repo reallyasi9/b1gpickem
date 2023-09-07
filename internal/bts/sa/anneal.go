@@ -222,7 +222,7 @@ func Anneal(ctx *Context) error {
 	// Print results
 	prettyPrint(streakOptions, teamNamesByID)
 
-	output := weekRef.Collection(bpefs.STEAK_PREDICTIONS_COLLECTION)
+	output := weekRef.Collection(bpefs.STREAK_PREDICTIONS_COLLECTION)
 
 	if ctx.DryRun {
 		log.Print("DRY RUN: Would write the following:")

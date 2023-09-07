@@ -173,7 +173,7 @@ func (cli CLI) Run() error {
 	}
 
 	picksCollection := weekRef.Collection(firestore.PICKS_COLLECTION)
-	streaksCollection := weekRef.Collection(firestore.STEAK_PREDICTIONS_COLLECTION)
+	streaksCollection := weekRef.Collection(firestore.STREAK_PICKS_COLLECTION)
 
 	err = fsClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
 
