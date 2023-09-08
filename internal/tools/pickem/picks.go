@@ -172,7 +172,6 @@ func openFileOrGSWriter(ctx context.Context, f string) (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	var w io.WriteCloser
 	switch u.Scheme {
 	case "gs":
 		gsClient, err := storage.NewClient(ctx)
@@ -183,19 +182,23 @@ func openFileOrGSWriter(ctx context.Context, f string) (io.WriteCloser, error) {
 		// URL path has leading slash, but GS expects path relative to bucket.
 		path := strings.TrimPrefix(u.Path, "/")
 		obj := bucket.Object(path)
-		w = obj.NewWriter(ctx)
+		w := obj.NewWriter(ctx)
+		// Setting the ContentType before writing is preferred, as net/http.DetectContentType assumes that XLSX files are ZIP archives
+		w.ObjectAttrs.ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+		return w, nil
 
 	case "file":
 		fallthrough
 	case "":
-		w, err = os.Create(u.Path)
+		w, err := os.Create(u.Path)
 		if err != nil {
 			return nil, err
 		}
+		return w, nil
 
 	default:
 		return nil, fmt.Errorf("unable to determine how to open '%s'", f)
 	}
 
-	return w, nil
 }
