@@ -195,7 +195,7 @@ func (cli CLI) Run() error {
 	}
 
 	var sp *firestore.StreakPick
-	s, spRef, err := firestore.GetStreakPredictions(ctx, weekRef, pkRef)
+	s, spRef, err := firestore.GetMostRecentStreakPrediction(ctx, weekRef, pkRef)
 	var nspErr firestore.NoStreakPickError
 	if err != nil && !errors.As(err, &nspErr) {
 		return fmt.Errorf("failed to lookup streak prediction for picker '%s': %w", cli.Picker, err)
