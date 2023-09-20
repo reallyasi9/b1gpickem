@@ -200,8 +200,18 @@ SlateParseLoop:
 			return err
 		}
 
+		// sometimes we pick the same game multiple times for diffrent competitions
+		// so we keep track of the IDs we have seen and append a suffix to repeats
+		suffixes := make(map[string]rune)
 		for _, game := range sgames {
 			gameID := game.Game.ID // convenient
+			if suffix, ok := suffixes[gameID]; ok {
+				suffix += 1
+				suffixes[gameID] = suffix
+				gameID = gameID + string(suffix)
+			} else {
+				suffixes[gameID] = 'a' - 1 // cheating
+			}
 			gameRef := slateRef.Collection(firestore.SLATE_GAMES_COLLECTION).Doc(gameID)
 			if ctx.Force {
 				err = t.Set(gameRef, &game)
