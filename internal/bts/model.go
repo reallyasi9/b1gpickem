@@ -2,7 +2,6 @@ package bts
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/atgjack/prob"
 	bpefs "github.com/reallyasi9/b1gpickem/internal/firestore"
@@ -105,11 +104,7 @@ func (m GaussianSpreadModel) spread(game *Game) float64 {
 }
 
 func (m GaussianSpreadModel) String() string {
-	var b strings.Builder
-	for t, r := range m.ratings {
-		b.WriteString(fmt.Sprintf("%5s: %0.3f (home adv %0.3f)\n", t, r.Points, r.HomeAdvantage))
-	}
-	return b.String()
+	return fmt.Sprintf("GaussianSpreadModel(%v, %d teams)", m.dist, len(m.ratings))
 }
 
 // OracleModel represents a Model that knows who won each matchup, so always returns a probability of win of either 1 or 0,
