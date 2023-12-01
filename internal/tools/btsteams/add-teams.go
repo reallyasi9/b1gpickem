@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	fs "cloud.google.com/go/firestore"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/tools/editteams"
 )
 
 // AddTeams adds teams to the BTS competition for a season.
@@ -24,7 +26,38 @@ func AddTeams(ctx *Context) error {
 	if err != nil {
 		return fmt.Errorf("AddTeams: failed to get teams: %w", err)
 	}
-	lookup := firestore.NewTeamRefsByOtherName(teams, teamRefs)
+	var lookup firestore.TeamRefsByName
+	var err2 *firestore.DuplicateTeamNameError
+	for {
+		lookup, err2 = firestore.NewTeamRefsByOtherName(teams, teamRefs)
+		if err2 == nil {
+			break
+		}
+
+		updateNames, err := editteams.SurveyReplaceName(teams, teamRefs, err2.Name, err2.Teams, err2.Refs, firestore.OtherName)
+		if err != nil {
+			panic(err)
+		}
+
+		for ref, t := range updateNames {
+			fmt.Printf("Updating %s to eliminate %s (names now [%s])\n", ref.ID, err2.Name, strings.Join(t.OtherNames, ", "))
+
+			editContext := &editteams.Context{
+				Context:         ctx.Context,
+				Force:           ctx.Force,
+				DryRun:          ctx.DryRun,
+				FirestoreClient: ctx.FirestoreClient,
+				ID:              ref.ID,
+				Team:            t,
+				Season:          ctx.Season,
+				Append:          false,
+			}
+			err := editteams.EditTeam(editContext)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
 
 	teamsToAdd := make(map[string]*fs.DocumentRef)
 	if ctx.Append {

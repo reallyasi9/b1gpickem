@@ -31,7 +31,10 @@ func GetPredictions(ctx *Context) error {
 		return fmt.Errorf("GetPredictions: Failed to get teams: %w", err)
 	}
 
-	teamLookup := firestore.NewTeamRefsByOtherName(teams, refs)
+	teamLookup, err2 := firestore.NewTeamRefsByOtherName(teams, refs)
+	if err2 != nil {
+		panic(err2)
+	}
 	tps, err := pt.Matchups(teamLookup)
 	if err != nil {
 		return fmt.Errorf("GetPredictions: Failed to match teams to refs: %w", err)
@@ -62,6 +65,7 @@ func GetPredictions(ctx *Context) error {
 		return nil
 	}
 
+	batch := ctx.FirestoreClient.Batch()
 	for i := 0; i < len(predictions); i += 500 {
 		ul := i + 500
 		if ul > len(predictions) {
@@ -72,23 +76,15 @@ func GetPredictions(ctx *Context) error {
 		for _, rp := range subset {
 			if ctx.Force {
 				// err := t.Set(rp.ref, &rp.pred)
-				_, err := rp.ref.Set(ctx, &rp.pred)
-				if err != nil {
-					return err
-				}
+				batch.Set(rp.ref, &rp.pred)
 			} else {
-				// err := t.Create(rp.ref, &rp.pred)
-				_, err := rp.ref.Create(ctx, &rp.pred)
-				if err != nil {
-					return err
-				}
+				batch.Create(rp.ref, &rp.pred)
 			}
 		}
-		// return nil
-		// })
+		_, err = batch.Commit(ctx)
 
 		if err != nil {
-			return fmt.Errorf("GetPredictions: Writing to firestore failed: %w", err)
+			return fmt.Errorf("GetPredictions: Writing batch commit to firestore failed: %w", err)
 		}
 	}
 

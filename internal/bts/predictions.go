@@ -110,7 +110,13 @@ func MakePredictions(s *Schedule, m PredictionModel) *Predictions {
 		probs[t1] = make([]float64, nWeeks)
 		spreads[t1] = make([]float64, nWeeks)
 		for week := 0; week < nWeeks; week++ {
-			probs[t1][week], spreads[t1][week] = m.Predict(s.Get(t1, week))
+			g := s.Get(t1, week)
+			prob, spread := m.Predict(g)
+			if g.Team(0) != t1 {
+				prob = 1 - prob
+				spread *= -1
+			}
+			probs[t1][week], spreads[t1][week] = prob, spread
 		}
 	}
 

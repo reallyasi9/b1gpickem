@@ -82,7 +82,11 @@ func makeStreakPick(ctx *Context, season, weekFrom, weekTo, picker *fs.DocumentR
 		if err != nil {
 			panic(err)
 		}
-		teamRefsByOtherName = firestore.NewTeamRefsByOtherName(teams, teamRefs)
+		var err2 *firestore.DuplicateTeamNameError
+		teamRefsByOtherName, err2 = firestore.NewTeamRefsByOtherName(teams, teamRefs)
+		if err2 != nil {
+			panic(err2)
+		}
 	})
 	gamesOnce.Do(func() {
 		games, gameRefs, err := firestore.GetGames(ctx, weekFrom)

@@ -79,17 +79,19 @@ func ExportPicks(ctx *Context) error {
 	return nil
 }
 
-func addRow(ctx context.Context, outExcel *excelize.File, sheetName string, row int, pick firestore.SlateRowBuilder) error {
-	out, err := pick.BuildSlateRow(ctx)
+func addRows(ctx context.Context, outExcel *excelize.File, sheetName string, rowNumber int, pick firestore.SlateRowBuilder) error {
+	out, err := pick.BuildSlateRows(ctx)
 	if err != nil {
 		return fmt.Errorf("failed making game output: %w", err)
 	}
-	for col, str := range out {
-		index, err := excelize.CoordinatesToCellName(col+1, row+1)
-		if err != nil {
-			return err
+	for row, content := range out {
+		for col, str := range content {
+			index, err := excelize.CoordinatesToCellName(col+1, row+rowNumber+1)
+			if err != nil {
+				return err
+			}
+			outExcel.SetCellStr(sheetName, index, str)
 		}
-		outExcel.SetCellStr(sheetName, index, str)
 	}
 	return nil
 }
@@ -120,8 +122,8 @@ func makePicksExcelFile(ctx context.Context, picks []firestore.Pick, pickRefs []
 	outExcel.SetCellStr(sheetName, "E1", "Notes")
 	outExcel.SetCellStr(sheetName, "F1", "Expected Value")
 
-	lastPickRow := -1 // need to calculate where the BTS row is
-	firstSDRow := -1
+	lastPickRow := math.MinInt // need to calculate where the BTS row is
+	firstSDRow := math.MaxInt
 	slateGames := make([]firestore.SlateGame, len(picks))
 
 	for i, pick := range picks {
@@ -134,26 +136,26 @@ func makePicksExcelFile(ctx context.Context, picks []firestore.Pick, pickRefs []
 			return nil, err
 		}
 		slateGames[i] = sg
-		if sg.Superdog {
-			if firstSDRow < 0 || sg.Row < firstSDRow {
-				firstSDRow = sg.Row
-			}
-		} else {
-			if lastPickRow < 0 || sg.Row > lastPickRow {
-				lastPickRow = sg.Row
-				// in case there are no SDs!
-				firstSDRow = sg.Row + 1
-			}
+		if !sg.Superdog && sg.Row > lastPickRow {
+			lastPickRow = sg.Row
 		}
-		if err = addRow(ctx, outExcel, sheetName, sg.Row, pick); err != nil {
+		if sg.Superdog && sg.Row < firstSDRow {
+			firstSDRow = sg.Row
+		}
+		if err = addRows(ctx, outExcel, sheetName, sg.Row, pick); err != nil {
 			return nil, err
 		}
 	}
 
-	// Between the picks and dogs, closer to the picks.
-	btsRow := int(math.Ceil(float64(lastPickRow) + float64(firstSDRow-lastPickRow)/2.))
+	// No dogs?
+	if firstSDRow == math.MaxInt {
+		firstSDRow = lastPickRow + 4
+	}
+
+	// Between the picks and dogs
+	btsRow := (lastPickRow + firstSDRow) / 2
 	if btsPickRef != nil {
-		if err := addRow(ctx, outExcel, sheetName, btsRow, btsPick); err != nil {
+		if err := addRows(ctx, outExcel, sheetName, btsRow, btsPick); err != nil {
 			return nil, err
 		}
 	} else {
@@ -170,7 +172,6 @@ func openFileOrGSWriter(ctx context.Context, f string) (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	var w io.WriteCloser
 	switch u.Scheme {
 	case "gs":
 		gsClient, err := storage.NewClient(ctx)
@@ -181,19 +182,23 @@ func openFileOrGSWriter(ctx context.Context, f string) (io.WriteCloser, error) {
 		// URL path has leading slash, but GS expects path relative to bucket.
 		path := strings.TrimPrefix(u.Path, "/")
 		obj := bucket.Object(path)
-		w = obj.NewWriter(ctx)
+		w := obj.NewWriter(ctx)
+		// Setting the ContentType before writing is preferred, as net/http.DetectContentType assumes that XLSX files are ZIP archives
+		w.ObjectAttrs.ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+		return w, nil
 
 	case "file":
 		fallthrough
 	case "":
-		w, err = os.Create(u.Path)
+		w, err := os.Create(u.Path)
 		if err != nil {
 			return nil, err
 		}
+		return w, nil
 
 	default:
 		return nil, fmt.Errorf("unable to determine how to open '%s'", f)
 	}
 
-	return w, nil
 }

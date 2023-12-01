@@ -60,3 +60,20 @@ func (g *Game) LocationRelativeToTeam(t int) RelativeLocation {
 		panic(fmt.Errorf("team %d is not a valid team", t))
 	}
 }
+
+// SwapTeams swaps which team is team 1 and which team is team 2 in the game, swapping the location accordingly.
+func (g *Game) SwapTeams() {
+	g.team1, g.team2 = g.team2, g.team1
+	g.location = -g.location
+}
+
+// EqualTo determines if to Game objects refer to the same actual matchup.
+func (lhs *Game) EqualTo(rhs *Game) bool {
+	if rhs == nil {
+		return false
+	}
+	if lhs.team1 == rhs.team1 && lhs.team2 == rhs.team2 && lhs.location == rhs.location {
+		return true
+	}
+	return lhs.team2 == rhs.team1 && lhs.team1 == rhs.team2 && lhs.location == -rhs.location
+}
