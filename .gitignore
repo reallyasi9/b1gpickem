@@ -16,6 +16,7 @@
 cmd/b1gtool/b1gtool
 cmd/pickem4me/pickem4me
 cmd/btstool/btstool
+cmd/pyptool/pyptool
 
 .vscode
 
