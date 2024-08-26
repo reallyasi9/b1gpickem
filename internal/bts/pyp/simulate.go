@@ -99,7 +99,7 @@ func Simulate(ctx *Context) error {
 	}
 
 	// FIXME: this takes forever. Why?
-	schedule, err := bts.MakeSchedule(ctx, fs, seasonRef, week.Number, pypTeamRefs)
+	schedule, err := bts.MakeSchedule(ctx, seasonRef, week.Number, pypTeamRefs)
 	if err != nil {
 		return fmt.Errorf("Simulate: unable to make schedule: %w", err)
 	}

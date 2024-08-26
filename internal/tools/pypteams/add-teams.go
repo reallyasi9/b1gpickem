@@ -24,7 +24,10 @@ func AddTeams(ctx *Context) error {
 	if err != nil {
 		return fmt.Errorf("AddTeams: failed to get teams: %w", err)
 	}
-	lookup := firestore.NewTeamRefsByOtherName(teams, teamRefs)
+	lookup, err2 := firestore.NewTeamRefsByOtherName(teams, teamRefs)
+	if err2 != nil {
+		return fmt.Errorf("AddTeams: duplicate other names found in season %d: %w", ctx.Season, err)
+	}
 
 	teamsToAdd := make(map[string]float64)
 	if ctx.Append {
