@@ -16,7 +16,7 @@ const STREAK_PICKS_COLLECTION = "streak-picks"
 
 type SlateRowBuilder interface {
 	// BuildSlateRow creates a row of strings for output into a slate spreadsheet.
-	BuildSlateRow(ctx context.Context) ([]string, error)
+	BuildSlateRows(ctx context.Context) ([][]string, error)
 }
 
 // Pick is a pick on a game. See: SlateGame, ModelPrediction, and Team for references.
@@ -158,9 +158,10 @@ func GetStreakPicks(ctx context.Context, weekRef *firestore.DocumentRef) (picks 
 }
 
 // BuildSlateRow fills out the remaining 4 cells for a pick in a slate.
-func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
+func (p Pick) BuildSlateRows(ctx context.Context) ([][]string, error) {
 	// game, instruction, pick, spread, notes, expected value
-	output := make([]string, 6)
+	output := make([][]string, 1)
+	line := make([]string, 6)
 
 	// need to know the game to get the notes right
 	var sgameDoc *firestore.DocumentSnapshot
@@ -198,6 +199,12 @@ func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 	var awayTeam Team
 	if err = awayTeamDoc.DataTo(&awayTeam); err != nil {
 		return nil, err
+	}
+
+	// Differentiate home and away team mascots if they are the same
+	if homeTeam.Mascot == awayTeam.Mascot {
+		homeTeam.Mascot = fmt.Sprintf("%s (of the %s variety)", homeTeam.Mascot, homeTeam.School)
+		awayTeam.Mascot = fmt.Sprintf("%s (of the %s variety)", awayTeam.Mascot, awayTeam.School)
 	}
 
 	// Game is straight forward
@@ -249,7 +256,7 @@ func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 			gameSB.WriteString(" **")
 		}
 	}
-	output[0] = gameSB.String()
+	line[0] = gameSB.String()
 
 	// Instructions only apply to noisy spreads
 	var instructionsSB strings.Builder
@@ -266,18 +273,18 @@ func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 		}
 		instructionsSB.WriteString(fmt.Sprintf(" iff you think they will win by at least %d points", ns))
 	}
-	output[1] = instructionsSB.String()
+	line[1] = instructionsSB.String()
 
 	// only pick if the team is not nil (else this is a Superdog game that wasn't picked)
 	if p.PickedTeam != nil {
 		if p.PickedTeam.ID == homeTeamDoc.Ref.ID {
-			output[2] = homeTeam.Mascot
+			line[2] = homeTeam.Mascot
 		} else {
-			output[2] = awayTeam.Mascot
+			line[2] = awayTeam.Mascot
 		}
 	}
 
-	output[3] = fmt.Sprintf("%+0.2f", p.PredictedSpread)
+	line[3] = fmt.Sprintf("%+0.2f", p.PredictedSpread)
 
 	notes := make([]string, 0)
 	if p.PredictedProbability > .8 {
@@ -295,45 +302,65 @@ func (p Pick) BuildSlateRow(ctx context.Context) ([]string, error) {
 	if sgame.HomeDisagreement {
 		notes = append(notes, "NOTE: The home team might not be who you think it is.")
 	}
-	output[4] = strings.Join(notes, "\n")
+	line[4] = strings.Join(notes, "\n")
 
-	output[5] = fmt.Sprintf("%0.3f", p.PredictedProbability*float64(sgame.Value))
+	line[5] = fmt.Sprintf("%0.3f", p.PredictedProbability*float64(sgame.Value))
+
+	output[0] = line
 
 	return output, nil
 }
 
 // BuildSlateRow creates a row of strings for direct output to a slate spreadsheet.
 // TODO: still not printing DDs correctly.
-func (sg StreakPick) BuildSlateRow(ctx context.Context) ([]string, error) {
+func (sg StreakPick) BuildSlateRows(ctx context.Context) ([][]string, error) {
+	tupleStrings := [...]string{
+		"BEAT THE STREAK!",
+		"DOUBLE DOWN!",
+		"TRIPLE DOWN!",
+		"QUADRUPLE DOWN!",
+		"QUINTUPLE DOWN!",
+		"SEXTUPLE DOWN!",
+		"SEPTUPLE DOWN!",
+		"OCTUPLE DOWN!",
+		"NONTUPLE DOWN!",
+		"DECTUPLE DOWN!",
+	}
 
 	// game, instruction, pick(s), total remaining spread, notes?, probability of beating the streak
-	output := make([]string, 6)
+	output := make([][]string, 0)
 
-	output[0] = "BEAT THE STREAK!"
-
-	pickedTeams := make([]string, len(sg.PickedTeams))
-	for i, teamRef := range sg.PickedTeams {
-		t, err := teamRef.Get(ctx)
-		if err != nil {
-			return nil, err
-		}
-		var team Team
-		err = t.DataTo(&team)
-		if err != nil {
-			return nil, err
-		}
-		pickedTeams[i] = team.Mascot
-	}
-
-	if len(pickedTeams) == 0 {
-		output[2] = "BYE"
+	if len(sg.PickedTeams) == 0 {
+		line := make([]string, 6)
+		line[0] = tupleStrings[0]
+		line[2] = "BYE"
+		line[3] = fmt.Sprintf("%0.12f", sg.PredictedSpread)
+		line[5] = fmt.Sprintf("%0.4f", sg.PredictedProbability)
+		output = append(output, line)
 	} else {
-		output[2] = strings.Join(pickedTeams, " AND ")
+		for i, teamRef := range sg.PickedTeams {
+			var team Team
+			snap, err := teamRef.Get(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("unable to get team %s: %w", teamRef.ID, err)
+			}
+			err = snap.DataTo(&team)
+			if err != nil {
+				return nil, fmt.Errorf("unable to build team from data %+v: %w", snap, err)
+			}
+
+			line := make([]string, 6)
+			if i > len(tupleStrings) {
+				line[0] = fmt.Sprintf("%d-TUPLE DOWN!", i+1)
+			} else {
+				line[0] = tupleStrings[i]
+			}
+			line[2] = team.Mascot
+			line[3] = fmt.Sprintf("%0.12f", sg.PredictedSpread)
+			line[5] = fmt.Sprintf("%0.4f", sg.PredictedProbability)
+			output = append(output, line)
+		}
 	}
-
-	output[3] = fmt.Sprintf("%0.12f", sg.PredictedSpread)
-
-	output[5] = fmt.Sprintf("%0.4f", sg.PredictedProbability)
 
 	return output, nil
 }

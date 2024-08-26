@@ -2,6 +2,7 @@ package parseslate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,6 +16,7 @@ import (
 	fs "cloud.google.com/go/firestore"
 	"cloud.google.com/go/storage"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/tools/editteams"
 	"github.com/tealeg/xlsx"
 )
 
@@ -48,17 +50,126 @@ func ParseSlate(ctx *Context) error {
 		return fmt.Errorf("ParseSlate: failed to get teams: %w", err)
 	}
 
-	tlOther := firestore.NewTeamRefsByOtherName(teams, teamRefs)
-	tlShort := firestore.NewTeamRefsByShortName(teams, teamRefs)
+	var tlOther firestore.TeamRefsByName
+	var err2 *firestore.DuplicateTeamNameError
+	for {
+		tlOther, err2 = firestore.NewTeamRefsByOtherName(teams, teamRefs)
+		if err2 == nil {
+			break
+		}
+
+		updateNames, err := editteams.SurveyReplaceName(teams, teamRefs, err2.Name, err2.Teams, err2.Refs, firestore.OtherName)
+		if err != nil {
+			panic(err)
+		}
+
+		for ref, t := range updateNames {
+			fmt.Printf("Updating %s to eliminate %s (names now [%s])\n", ref.ID, err2.Name, strings.Join(t.OtherNames, ", "))
+
+			editContext := &editteams.Context{
+				Context:         ctx.Context,
+				Force:           ctx.Force,
+				DryRun:          ctx.DryRun,
+				FirestoreClient: ctx.FirestoreClient,
+				ID:              ref.ID,
+				Team:            t,
+				Season:          ctx.Season,
+				Append:          false,
+			}
+			err := editteams.EditTeam(editContext)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+
+	var tlShort firestore.TeamRefsByName
+	var err3 *firestore.DuplicateTeamNameError
+	for {
+		tlShort, err3 = firestore.NewTeamRefsByShortName(teams, teamRefs)
+		if err3 == nil {
+			break
+		}
+
+		updateNames, err := editteams.SurveyReplaceName(teams, teamRefs, err3.Name, err3.Teams, err3.Refs, firestore.ShortName)
+		if err != nil {
+			panic(err)
+		}
+
+		for ref, t := range updateNames {
+			fmt.Printf("Updating %s to eliminate %s (names now [%s])\n", ref.ID, err3.Name, strings.Join(t.ShortNames, ", "))
+
+			editContext := &editteams.Context{
+				Context:         ctx.Context,
+				Force:           ctx.Force,
+				DryRun:          ctx.DryRun,
+				FirestoreClient: ctx.FirestoreClient,
+				ID:              ref.ID,
+				Team:            t,
+				Season:          ctx.Season,
+				Append:          false,
+			}
+			err := editteams.EditTeam(editContext)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
 
 	slurp, err := io.ReadAll(reader)
 	if err != nil {
 		return fmt.Errorf("ParseSlate: failed to read slate file: %w", err)
 	}
 
-	sgames, err := parseSheet(slurp, tlOther, tlShort, gl)
-	if err != nil {
-		return fmt.Errorf("ParseSlate: failed to parse games from slate file: %w", err)
+	var sgames []firestore.SlateGame
+	var errs []error
+
+SlateParseLoop:
+	for {
+		sgames, errs = parseSheet(slurp, tlOther, tlShort, gl)
+		if errs == nil {
+			break
+		}
+
+		for _, err := range errs {
+			if e, ok := err.(firestore.NameNotFoundError); ok {
+				t, ref, err2 := editteams.SurveyAddName(teams, teamRefs, e.Name, e.NameType)
+				if err2 != nil {
+					panic(err2)
+				}
+
+				fmt.Printf("Updating %s to add %s name %s\n", ref.ID, e.NameType, e.Name)
+
+				editContext := &editteams.Context{
+					Context:         ctx.Context,
+					Force:           ctx.Force,
+					DryRun:          ctx.DryRun,
+					FirestoreClient: ctx.FirestoreClient,
+					ID:              ref.ID,
+					Team:            t,
+					Season:          ctx.Season,
+					Append:          false,
+				}
+				err := editteams.EditTeam(editContext)
+				if err != nil {
+					panic(err)
+				}
+
+				// One error fixed: try parsing again after adding team to lookup map
+				switch e.NameType {
+				case firestore.ShortName:
+					tlShort[e.Name] = ref
+				case firestore.OtherName:
+					tlOther[e.Name] = ref
+				default:
+					panic(errors.New("unrecognized name type"))
+				}
+				continue SlateParseLoop
+
+			} else {
+				return fmt.Errorf("ParseSlate: failed to parse games from slate file: %w", err)
+			}
+		}
 	}
 
 	if ctx.DryRun {
@@ -89,8 +200,18 @@ func ParseSlate(ctx *Context) error {
 			return err
 		}
 
+		// sometimes we pick the same game multiple times for diffrent competitions
+		// so we keep track of the IDs we have seen and append a suffix to repeats
+		suffixes := make(map[string]rune)
 		for _, game := range sgames {
 			gameID := game.Game.ID // convenient
+			if suffix, ok := suffixes[gameID]; ok {
+				suffix += 1
+				suffixes[gameID] = suffix
+				gameID = gameID + string(suffix)
+			} else {
+				suffixes[gameID] = 'a' - 1 // cheating
+			}
 			gameRef := slateRef.Collection(firestore.SLATE_GAMES_COLLECTION).Doc(gameID)
 			if ctx.Force {
 				err = t.Set(gameRef, &game)
@@ -125,7 +246,7 @@ func getFileOrGSReader(ctx context.Context, f string) (io.ReadCloser, error) {
 			return nil, err
 		}
 		bucket := gsClient.Bucket(u.Host)
-		obj := bucket.Object(u.Path)
+		obj := bucket.Object(strings.Trim(u.Path, "/"))
 		r, err = obj.NewReader(ctx)
 		if err != nil {
 			return nil, err
@@ -191,7 +312,7 @@ func getCreationTime(ctx context.Context, f string) (time.Time, error) {
 			return t, err
 		}
 		bucket := gsClient.Bucket(u.Host)
-		obj := bucket.Object(u.Path)
+		obj := bucket.Object(strings.Trim(u.Path, "/"))
 		attrs, err := obj.Attrs(ctx)
 		if err != nil {
 			return t, err
@@ -201,7 +322,7 @@ func getCreationTime(ctx context.Context, f string) (time.Time, error) {
 	case "file":
 		fallthrough
 	case "":
-		s, err := os.Stat(f)
+		s, err := os.Stat(u.Path)
 		if err != nil {
 			return t, err
 		}
@@ -214,10 +335,10 @@ func getCreationTime(ctx context.Context, f string) (time.Time, error) {
 	return t, nil
 }
 
-func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl firestore.GameRefsByMatchup) ([]firestore.SlateGame, error) {
+func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl firestore.GameRefsByMatchup) ([]firestore.SlateGame, []error) {
 	xl, err := xlsx.OpenBinary(slurp)
 	if err != nil {
-		return nil, err
+		return nil, []error{err}
 	}
 
 	sheet := xl.Sheets[0]
@@ -313,11 +434,12 @@ func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl fire
 		for i, e := range errors {
 			log.Printf("Error %d: %s", i, e)
 		}
-		log.Print("Returning the first error")
-		err = errors[0]
+	} else {
+		// nil out to make error handling easier
+		errors = nil
 	}
 
-	return games, err
+	return games, errors
 }
 
 // ^(\*\*)?         # Marker for GOTW
@@ -357,7 +479,7 @@ func parseGame(cell string, tl firestore.TeamRefsByName) (matchup firestore.Matc
 	var teamRef *fs.DocumentRef
 	name := submatches[3]
 	if teamRef, ok = tl[name]; !ok {
-		err = fmt.Errorf("parseGame: unable to find team with name '%s' in cell '%s'", name, cell)
+		err = firestore.NameNotFoundError{Name: name, NameType: firestore.ShortName}
 		return
 	}
 	matchup.Away = teamRef.ID
@@ -374,7 +496,7 @@ func parseGame(cell string, tl firestore.TeamRefsByName) (matchup firestore.Matc
 
 	name = submatches[6]
 	if teamRef, ok = tl[name]; !ok {
-		err = fmt.Errorf("parseGame: unable to find team with name '%s' in cell '%s'", name, cell)
+		err = firestore.NameNotFoundError{Name: name, NameType: firestore.ShortName}
 		return
 	}
 	matchup.Home = teamRef.ID
@@ -395,7 +517,7 @@ func parseNoisySpread(cell string, tl firestore.TeamRefsByName) (favorite string
 	var teamRef *fs.DocumentRef
 	var ok bool
 	if teamRef, ok = tl[name]; !ok {
-		err = fmt.Errorf("parseNoisySpread: unable to find team with name '%s' in cell '%s'", name, cell)
+		err = firestore.NameNotFoundError{Name: name, NameType: firestore.ShortName}
 		return
 	}
 	favorite = teamRef.ID
@@ -421,14 +543,14 @@ func parseDog(cell string, tl firestore.TeamRefsByName) (matchup firestore.Match
 	var teamRef *fs.DocumentRef
 	var ok bool
 	if teamRef, ok = tl[name]; !ok {
-		err = fmt.Errorf("parseDog: unable to find team with name '%s' in cell '%s'", name, cell)
+		err = firestore.NameNotFoundError{Name: name, NameType: firestore.OtherName}
 		return
 	}
 	matchup.Home = teamRef.ID
 
 	name = submatches[2]
 	if teamRef, ok = tl[name]; !ok {
-		err = fmt.Errorf("parseDog: unable to find team with name '%s' in cell '%s'", name, cell)
+		err = firestore.NameNotFoundError{Name: name, NameType: firestore.OtherName}
 		return
 	}
 	matchup.Away = teamRef.ID

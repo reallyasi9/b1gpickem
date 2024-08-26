@@ -2,12 +2,16 @@ package editteams
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 
 	fs "cloud.google.com/go/firestore"
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
+	"golang.org/x/exp/constraints"
 )
 
 func distinct(s []string) []string {
@@ -128,3 +132,123 @@ func EditTeam(ctx *Context) error {
 	}
 	return err
 }
+
+func SurveyAddName(teams []firestore.Team, teamRefs []*fs.DocumentRef, name string, nameType firestore.NameType) (firestore.Team, *fs.DocumentRef, error) {
+	fmt.Printf("An error occurred when looking up a team.\nThe name \"%s\" is not a recognized %s name.\nYou must add the name to an existing team to correct this before continuing.", name, nameType)
+
+	teamsByName := make(map[string]firestore.Team)
+	teamRefsByName := make(map[string]*fs.DocumentRef)
+	teamNames := []string{}
+	teamNameOnly := []string{}
+	for i, team := range teams {
+		dispName := fmt.Sprintf("(%s) %s", teamRefs[i].ID, team)
+		teamsByName[dispName] = team
+		teamRefsByName[dispName] = teamRefs[i]
+		teamNames = append(teamNames, dispName)
+		teamNameOnly = append(teamNameOnly, team.String())
+	}
+	sort.Sort(ByOther[string, string]{teamNames, teamNameOnly})
+	q1 := &survey.Select{
+		Message: fmt.Sprintf("Which team corresponds to the %s name '%s'?", nameType, name),
+		Options: teamNames,
+	}
+	var a1 string
+	err := survey.AskOne(q1, &a1)
+	if err != nil {
+		return firestore.Team{}, nil, err
+	}
+
+	t := teamsByName[a1]
+	ref := teamRefsByName[a1]
+	switch nameType {
+	case firestore.ShortName:
+		t.ShortNames = append(t.ShortNames, name)
+	case firestore.OtherName:
+		t.OtherNames = append(t.OtherNames, name)
+	default:
+		return t, ref, errors.New("name type not recognized")
+	}
+
+	return t, ref, nil
+}
+
+func SurveyReplaceName(teams []firestore.Team, teamRefs []*fs.DocumentRef, errName string, errTeams []firestore.Team, errRefs []*fs.DocumentRef, nameType firestore.NameType) (map[*fs.DocumentRef]firestore.Team, error) {
+	fmt.Printf("An error occurred when creating a team lookup map.\nThe name \"%s\" is used by %d teams.\nYou must update the names used by the teams to correct this before continuing.", errName, len(errTeams))
+	teamsByName := make(map[string]firestore.Team)
+	teamRefsByName := make(map[string]*fs.DocumentRef)
+	teamNames := []string{}
+	teamNameOnly := []string{}
+	for i, team := range errTeams {
+		dispName := fmt.Sprintf("(%s) %s", errRefs[i].ID, team)
+		teamsByName[dispName] = team
+		teamRefsByName[dispName] = errRefs[i]
+		teamNames = append(teamNames, dispName)
+		teamNameOnly = append(teamNameOnly, team.String())
+	}
+	sort.Sort(ByOther[string, string]{teamNames, teamNameOnly})
+	q1 := &survey.MultiSelect{
+		Message: "Which team(s) do you want to edit?",
+		Options: teamNames,
+	}
+	a1 := []string{}
+	err := survey.AskOne(q1, &a1, survey.WithRemoveSelectNone(), survey.WithValidator(survey.MinItems(1)))
+	if err != nil {
+		return nil, err
+	}
+
+	updateNames := make(map[*fs.DocumentRef]firestore.Team)
+	for _, updateTeam := range a1 {
+		q2 := &survey.Input{
+			Message: fmt.Sprintf("Enter the name for team \"%s\" that will replace \"%s\" (leave blank to delete the name from the team)", updateTeam, errName),
+		}
+		var a2 string
+		err := survey.AskOne(q2, &a2, survey.WithValidator(func(val interface{}) error {
+			if str, ok := val.(string); !ok || str == errName {
+				return errors.New("the new name cannot be the same as the old name")
+			}
+			return nil
+		}))
+		if err != nil {
+			panic(err)
+		}
+		t := teamsByName[updateTeam]
+		if nameType == firestore.ShortName {
+			for i, n := range t.ShortNames {
+				if n == errName {
+					if len(a2) == 0 {
+						t.ShortNames = append(t.ShortNames[:i], t.ShortNames[i+1:]...)
+					} else {
+						t.ShortNames[i] = a2
+					}
+				}
+			}
+		} else if nameType == firestore.OtherName {
+			for i, n := range t.OtherNames {
+				if n == errName {
+					if len(a2) == 0 {
+						t.OtherNames = append(t.OtherNames[:i], t.OtherNames[i+1:]...)
+					} else {
+						t.OtherNames[i] = a2
+					}
+				}
+			}
+		} else {
+			panic(errors.New("unrecognized name type"))
+		}
+		updateNames[teamRefsByName[updateTeam]] = t
+	}
+
+	return updateNames, nil
+}
+
+type ByOther[X interface{}, T constraints.Ordered] struct {
+	Slice  []X
+	SortBy []T
+}
+
+func (sbo ByOther[X, T]) Len() int { return len(sbo.Slice) }
+func (sbo ByOther[X, T]) Swap(i, j int) {
+	sbo.Slice[i], sbo.Slice[j] = sbo.Slice[j], sbo.Slice[i]
+	sbo.SortBy[i], sbo.SortBy[j] = sbo.SortBy[j], sbo.SortBy[i]
+}
+func (sbo ByOther[X, T]) Less(i, j int) bool { return sbo.SortBy[i] < sbo.SortBy[j] }

@@ -8,7 +8,7 @@ import (
 	"cloud.google.com/go/firestore"
 )
 
-const STEAK_PREDICTIONS_COLLECTION = "streak-predictions"
+const STREAK_PREDICTIONS_COLLECTION = "streak-predictions"
 const STREAK_TEAMS_REMAINING_COLLECTION = "streak-teams-remaining"
 
 // StreakPredictions records the best predicted streak and the possible streaks for a given picker.
@@ -198,17 +198,14 @@ func (f NoStreakPickError) Error() string {
 }
 
 // GetStreakPredictions gets a StreakPredictions for a given picker. Returns an error if the picker does not have a streak prediction for the given week.
-func GetStreakPredictions(ctx context.Context, week, picker *firestore.DocumentRef) (StreakPredictions, *firestore.DocumentRef, error) {
+func GetMostRecentStreakPrediction(ctx context.Context, week, picker *firestore.DocumentRef) (StreakPredictions, *firestore.DocumentRef, error) {
 	var sp StreakPredictions
-	sps, err := week.Collection(STEAK_PREDICTIONS_COLLECTION).Where("picker", "==", picker).Documents(ctx).GetAll()
+	sps, err := week.Collection(STREAK_PREDICTIONS_COLLECTION).Where("picker", "==", picker).OrderBy("calculation_end_time", firestore.Desc).Limit(1).Documents(ctx).GetAll()
 	if err != nil {
 		return sp, nil, err
 	}
 	if len(sps) == 0 {
 		return sp, nil, NoStreakPickError(picker.ID)
-	}
-	if len(sps) > 1 {
-		return sp, nil, fmt.Errorf("ambiguous streak picks for picker %s", picker.ID)
 	}
 	err = sps[0].DataTo(&sp)
 	return sp, sps[0].Ref, err

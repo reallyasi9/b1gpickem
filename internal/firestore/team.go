@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"cloud.google.com/go/firestore"
+	"github.com/jedib0t/go-pretty/v6/list"
 	"google.golang.org/api/iterator"
 )
 
@@ -62,20 +63,75 @@ type Team struct {
 	Venue *firestore.DocumentRef `firestore:"venue"`
 }
 
-func (t Team) String() string {
+// NameType is an enumeration of types of team names (short, other, etc.)
+type NameType int64
+
+const (
+	ShortName NameType = 0
+	OtherName NameType = 1
+)
+
+func (n NameType) String() string {
+	switch n {
+	case ShortName:
+		return "short"
+	case OtherName:
+		return "other"
+	}
+	return "unknown"
+}
+
+type DuplicateTeamNameError struct {
+	// Name is the duplicate name detected
+	Name string
+
+	// NameType is the name type where the duplicate was found (e.g., "short", "other")
+	NameType NameType
+
+	// Teams are the Team structs where duplicates were detected (in the same order as Refs)
+	Teams []Team
+
+	// Refs are the references to the Team documents where duplicates were detected (in the same order as Teams)
+	Refs []*firestore.DocumentRef
+}
+
+// Error fulfils error interface
+func (err DuplicateTeamNameError) Error() string {
 	var sb strings.Builder
-	sb.WriteString("Team\n")
-	ss := make([]string, 0)
-	ss = append(ss, treeString("Abbreviation", 0, false, t.Abbreviation))
-	ss = append(ss, treeStringSlice("ShortNames", 0, false, t.ShortNames))
-	ss = append(ss, treeStringSlice("OtherNames", 0, false, t.OtherNames))
-	ss = append(ss, treeString("School", 0, false, t.School))
-	ss = append(ss, treeString("Mascot", 0, false, t.Mascot))
-	ss = append(ss, treeStringSlice("Colors", 0, false, t.Colors))
-	ss = append(ss, treeStringSlice("Logos", 0, false, t.Logos))
-	ss = append(ss, treeRef("Venue", 0, true, t.Venue))
-	sb.WriteString(strings.Join(ss, "\n"))
-	return sb.String()
+	sb.WriteString(fmt.Sprintf("%s (%d teams):\n", err.Name, len(err.Teams)))
+	for _, t := range err.Teams {
+		sb.WriteString(fmt.Sprintf("%s\n", t))
+	}
+	return fmt.Sprintf("duplicate team names of type %s detected: %v", err.NameType.String(), sb.String())
+}
+
+type NameNotFoundError struct {
+	Name     string
+	NameType NameType
+}
+
+// Error fulfills the error interface
+func (s NameNotFoundError) Error() string {
+	return fmt.Sprintf("team %s name '%s' not found", s.NameType, s.Name)
+}
+
+func (t Team) String() string {
+	return fmt.Sprintf("%s %s", t.School, t.Mascot)
+}
+
+func (t Team) Pretty() string {
+	l := list.NewWriter()
+	l.SetStyle(list.StyleConnectedLight)
+	l.AppendItem(fmt.Sprintf("%s (%s)", t.String(), t.Abbreviation))
+	l.AppendItem("Other names")
+	l.Indent()
+	l.AppendItems([]interface{}{t.OtherNames})
+	l.UnIndent()
+	l.AppendItem("Short names")
+	l.Indent()
+	l.AppendItems([]interface{}{t.ShortNames})
+	l.UnIndent()
+	return l.Render()
 }
 
 // GetTeams returns a collection of teams for a given season.
@@ -105,60 +161,62 @@ func GetTeams(ctx context.Context, season *firestore.DocumentRef) ([]Team, []*fi
 // TeamRefsByName is a type for quick lookups of teams by other name.
 type TeamRefsByName map[string]*firestore.DocumentRef
 
-func NewTeamRefsByOtherName(teams []Team, refs []*firestore.DocumentRef) TeamRefsByName {
+func NewTeamRefsByOtherName(teams []Team, refs []*firestore.DocumentRef) (TeamRefsByName, *DuplicateTeamNameError) {
 	byName := make(TeamRefsByName)
-	catcher := make(map[string]Team)
-	duplicates := make(map[string][]Team)
+	// Only return the first duplicate detected
+	nameCatcher := make(map[string]int)
+	var duplicates *DuplicateTeamNameError
 	for i, t := range teams {
 		for _, n := range t.OtherNames {
-			if dd, ok := catcher[n]; ok {
-				if _, found := duplicates[n]; !found {
-					duplicates[n] = []Team{dd}
+			if j, found := nameCatcher[n]; found {
+				if duplicates == nil {
+					duplicates = &DuplicateTeamNameError{
+						Name:     n,
+						NameType: OtherName,
+						Teams:    []Team{t, teams[j]},
+						Refs:     []*firestore.DocumentRef{refs[i], refs[j]},
+					}
+				} else {
+					duplicates.Teams = append(duplicates.Teams, t)
+					duplicates.Refs = append(duplicates.Refs, refs[i])
 				}
-				duplicates[n] = append(duplicates[n], t)
 			}
-			catcher[n] = t
+			nameCatcher[n] = i
 			byName[n] = refs[i]
 		}
-	}
-	if len(duplicates) != 0 {
-		var sb strings.Builder
-		for name, ts := range duplicates {
-			sb.WriteString(fmt.Sprintf("%s (%d teams):\n", name, len(ts)))
-			for _, t := range ts {
-				sb.WriteString(fmt.Sprintf("%s\n", t))
-			}
+		if duplicates != nil {
+			return nil, duplicates
 		}
-		panic(fmt.Errorf("duplicate other names detected: %v", sb.String()))
 	}
-	return byName
+	return byName, nil
 }
 
-func NewTeamRefsByShortName(teams []Team, refs []*firestore.DocumentRef) TeamRefsByName {
+func NewTeamRefsByShortName(teams []Team, refs []*firestore.DocumentRef) (TeamRefsByName, *DuplicateTeamNameError) {
 	byName := make(TeamRefsByName)
-	catcher := make(map[string]Team)
-	duplicates := make(map[string][]Team)
+	// Only return the first duplicate detected
+	nameCatcher := make(map[string]int)
+	var duplicates *DuplicateTeamNameError
 	for i, t := range teams {
 		for _, n := range t.ShortNames {
-			if dd, ok := catcher[n]; ok {
-				if _, found := duplicates[n]; !found {
-					duplicates[n] = []Team{dd}
+			if j, found := nameCatcher[n]; found {
+				if duplicates == nil {
+					duplicates = &DuplicateTeamNameError{
+						Name:     n,
+						NameType: ShortName,
+						Teams:    []Team{t, teams[j]},
+						Refs:     []*firestore.DocumentRef{refs[i], refs[j]},
+					}
+				} else {
+					duplicates.Teams = append(duplicates.Teams, t)
+					duplicates.Refs = append(duplicates.Refs, refs[i])
 				}
-				duplicates[n] = append(duplicates[n], t)
 			}
-			catcher[n] = t
+			nameCatcher[n] = i
 			byName[n] = refs[i]
 		}
-	}
-	if len(duplicates) != 0 {
-		var sb strings.Builder
-		for name, ts := range duplicates {
-			sb.WriteString(fmt.Sprintf("%s (%d teams):\n", name, len(ts)))
-			for _, t := range ts {
-				sb.WriteString(fmt.Sprintf("%s\n", t))
-			}
+		if duplicates != nil {
+			return nil, duplicates
 		}
-		panic(fmt.Errorf("duplicate short names detected: %v", sb.String()))
 	}
-	return byName
+	return byName, nil
 }

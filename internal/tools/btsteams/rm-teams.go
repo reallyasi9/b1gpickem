@@ -18,7 +18,10 @@ func RmTeams(ctx *Context) error {
 	if err != nil {
 		return fmt.Errorf("RmTeams: failed to get teams: %w", err)
 	}
-	lookup := firestore.NewTeamRefsByOtherName(teams, teamRefs)
+	lookup, err := firestore.NewTeamRefsByOtherName(teams, teamRefs)
+	if err != nil {
+		panic(err)
+	}
 
 	teamsToKeep := make(map[string]*fs.DocumentRef)
 	for _, ref := range season.StreakTeams {

@@ -16,62 +16,84 @@ type Schedule map[Team][]*Game
 // MakeSchedule builds a schedule from the games in Firestore.
 // The schedule will only include games from the given `week` onward (inclusive), and only for the given `teams`.
 // If a `team` does not have a game in a given week, a BYE will be inserted.
-func MakeSchedule(ctx context.Context, client *firestore.Client, season *firestore.DocumentRef, week int, teams []*firestore.DocumentRef) (schedule Schedule, err error) {
+func MakeSchedule(ctx context.Context, season *firestore.DocumentRef, week int, teams []*firestore.DocumentRef) (schedule Schedule, err error) {
 	weeks, err := season.Collection(bpefs.WEEKS_COLLECTION).Where("number", ">=", week).OrderBy("number", firestore.Asc).Documents(ctx).GetAll()
 	if err != nil {
 		return
 	}
 
 	schedule = make(Schedule)
-	teamMap := make(map[string]struct{})
+	teamLookup := make(map[string]Team)
 	for _, team := range teams {
-		schedule[Team(team.ID)] = make([]*Game, 0)
-		teamMap[team.ID] = struct{}{}
+		t := Team(team.ID)
+		schedule[t] = make([]*Game, len(weeks))
+		// default to all BYE weeks
+		byeGame := NewGame(t, BYE, Neutral)
+		for iwk := 0; iwk < len(weeks); iwk++ {
+			schedule[t][iwk] = byeGame
+		}
+		teamLookup[team.ID] = t
 	}
 
-	for _, weekSnap := range weeks {
+	for iwk, weekSnap := range weeks {
 		// Search through games in each week for a matching team.
 		games, _, e := bpefs.GetGames(ctx, weekSnap.Ref)
 		if e != nil {
 			err = e
 			return
 		}
-		anyGames := false
-		// build a set of bye games for this week as default
-		allGames := make(map[string]*Game)
-		for t := range teamMap {
-			allGames[t] = NewGame(Team(t), BYE, Neutral)
-		}
+
 		for _, game := range games {
-			if _, ok := teamMap[game.HomeTeam.ID]; ok {
+			var g *Game
+			if t, ok := teamLookup[game.HomeTeam.ID]; ok {
 				var loc RelativeLocation
 				if !game.NeutralSite {
 					loc = Home
 				}
-				g := NewGame(Team(game.HomeTeam.ID), Team(game.AwayTeam.ID), loc)
-				allGames[game.HomeTeam.ID] = g
-				anyGames = true
+				g = NewGame(t, Team(game.AwayTeam.ID), loc)
+				schedule[t][iwk] = g
 			}
-			if _, ok := teamMap[game.AwayTeam.ID]; ok {
-				var loc RelativeLocation
-				if !game.NeutralSite {
-					loc = Away
+			if t, ok := teamLookup[game.AwayTeam.ID]; ok {
+				if g == nil {
+					var loc RelativeLocation
+					if !game.NeutralSite {
+						loc = Away
+					}
+					g = NewGame(t, Team(game.HomeTeam.ID), loc)
 				}
-				g := NewGame(Team(game.AwayTeam.ID), Team(game.HomeTeam.ID), loc)
-				allGames[game.AwayTeam.ID] = g
-				anyGames = true
-			}
-		}
-
-		if anyGames {
-			// At least one game: count it!
-			for t, g := range allGames {
-				schedule[Team(t)] = append(schedule[Team(t)], g)
+				schedule[t][iwk] = g
 			}
 		}
 	}
 
 	return
+}
+
+type weekTeam struct {
+	week int
+	team Team
+}
+
+// UniqueGames filters a schedule to the unique games.
+// If two teams (the highest level of sorting of the schedule) play each other, only one of those games is kept.
+func (s Schedule) UniqueGames() []*Game {
+	gamesSeen := make(map[weekTeam]*Game)
+	for team, weeks := range s {
+		for week, game := range weeks {
+			opponent := weekTeam{week: week, team: game.team2}
+			if _, ok := gamesSeen[opponent]; !ok {
+				me := weekTeam{week: week, team: team}
+				gamesSeen[me] = game
+			}
+		}
+	}
+
+	games := make([]*Game, 0, len(gamesSeen))
+	for _, game := range gamesSeen {
+		games = append(games, game)
+	}
+
+	return games
 }
 
 // Get a game for a team and week number.
@@ -127,8 +149,12 @@ func (s Schedule) String() string {
 		b.WriteString(fmt.Sprintf("%4s: ", team))
 		for week := 0; week < nW; week++ {
 			g := s.Get(team, week)
+			thisTeam := 0
+			if g.team2 == team {
+				thisTeam = 1
+			}
 			extra := ' '
-			switch g.LocationRelativeToTeam(0) {
+			switch g.LocationRelativeToTeam(thisTeam) {
 			case Away:
 				extra = '@'
 			case Far:
@@ -138,12 +164,12 @@ func (s Schedule) String() string {
 			case Neutral:
 				extra = '!'
 			}
-			if g.Team(1) != BYE {
+			if g.Team(1-thisTeam) != BYE {
 				b.WriteRune(extra)
 			} else {
 				b.WriteRune(' ')
 			}
-			b.WriteString(fmt.Sprintf("%-4s ", g.Team(1)))
+			b.WriteString(fmt.Sprintf("%-4s ", g.Team(1-thisTeam)))
 		}
 		b.WriteString("\n")
 	}

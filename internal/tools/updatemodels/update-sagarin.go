@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -17,6 +16,7 @@ import (
 
 	fs "cloud.google.com/go/firestore"
 	"github.com/reallyasi9/b1gpickem/internal/firestore"
+	"github.com/reallyasi9/b1gpickem/internal/tools/editteams"
 )
 
 const ratingColor = "#9900ff"
@@ -57,11 +57,41 @@ func UpdateSagarin(ctx *Context) error {
 	week := strconv.Itoa(ctx.Week)
 
 	seasonRef := ctx.FirestoreClient.Collection(firestore.SEASONS_COLLECTION).Doc(year)
-	teams, refs, err := firestore.GetTeams(ctx, seasonRef)
+	teams, teamRefs, err := firestore.GetTeams(ctx, seasonRef)
 	if err != nil {
 		return fmt.Errorf("GetPredictions: Failed to get teams: %w", err)
 	}
-	teamLookup := firestore.NewTeamRefsByOtherName(teams, refs)
+	var teamLookup firestore.TeamRefsByName
+	var err2 *firestore.DuplicateTeamNameError
+	for {
+		teamLookup, err2 = firestore.NewTeamRefsByOtherName(teams, teamRefs)
+		if err2 == nil {
+			break
+		}
+		updateMap, err3 := editteams.SurveyReplaceName(teams, teamRefs, err2.Name, err2.Teams, err2.Refs, err2.NameType)
+		if err3 != nil {
+			panic(err3)
+		}
+
+		for ref, t := range updateMap {
+			fmt.Printf("Updating %s to add %s name %s\n", ref.ID, err2.NameType, err2.Name)
+
+			editContext := &editteams.Context{
+				Context:         ctx.Context,
+				Force:           ctx.Force,
+				DryRun:          ctx.DryRun,
+				FirestoreClient: ctx.FirestoreClient,
+				ID:              ref.ID,
+				Team:            t,
+				Season:          ctx.Season,
+				Append:          false,
+			}
+			err := editteams.EditTeam(editContext)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
 
 	models, refs, err := firestore.GetModels(ctx, ctx.FirestoreClient)
 	if err != nil {
@@ -79,9 +109,45 @@ func UpdateSagarin(ctx *Context) error {
 		}
 	}
 
-	sagTable, err := parseSagarinTable(SAG_URL, teamLookup, modelRefs)
-	if err != nil {
-		return fmt.Errorf("GetPredictions: Failed to create Sagarin table: %w", err)
+	var sagTable map[string]sagarinElement
+	var err3 []error
+
+SagarinParseLoop:
+	for {
+		sagTable, err3 = parseSagarinTable(SAG_URL, teamLookup, modelRefs)
+		if err3 == nil {
+			break
+		}
+		for _, err := range err3 {
+			if e, ok := err.(firestore.NameNotFoundError); ok {
+				t, ref, err4 := editteams.SurveyAddName(teams, teamRefs, e.Name, e.NameType)
+				if err4 != nil {
+					panic(err4)
+				}
+
+				fmt.Printf("Updating %s to add %s name %s\n", ref.ID, e.NameType, e.Name)
+
+				editContext := &editteams.Context{
+					Context:         ctx.Context,
+					Force:           ctx.Force,
+					DryRun:          ctx.DryRun,
+					FirestoreClient: ctx.FirestoreClient,
+					ID:              ref.ID,
+					Team:            t,
+					Season:          ctx.Season,
+					Append:          false,
+				}
+				err := editteams.EditTeam(editContext)
+				if err != nil {
+					panic(err)
+				}
+
+				teamLookup[e.Name] = ref
+				continue SagarinParseLoop
+			} else {
+				return fmt.Errorf("GetPredictions: Failed to create Sagarin table: %w", err)
+			}
+		}
 	}
 
 	// Begin writing
@@ -140,7 +206,7 @@ func UpdateSagarin(ctx *Context) error {
 type sagarinElement []firestore.ModelTeamPoints
 
 // parseSagarinTable parses the table provided by Sagarin for each team.
-func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*fs.DocumentRef) (map[string]sagarinElement, error) {
+func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*fs.DocumentRef) (map[string]sagarinElement, []error) {
 	var rc io.ReadCloser
 	if _, err := url.Parse(f); err == nil {
 		// <sigh> Oh Sagarin...
@@ -151,37 +217,37 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 		var err error
 		rc, err = request(httpClient, f)
 		if err != nil {
-			return nil, err
+			return nil, []error{err}
 		}
 	} else {
 		var err error
 		rc, err = os.Open(f)
 		if err != nil {
-			return nil, err
+			return nil, []error{err}
 		}
 	}
 	defer rc.Close()
 
-	content, err := ioutil.ReadAll(rc)
+	content, err := io.ReadAll(rc)
 	if err != nil {
-		return nil, fmt.Errorf("parseSagarinTable: cannot read body from \"%s\": %w", f, err)
+		return nil, []error{fmt.Errorf("parseSagarinTable: cannot read body from \"%s\": %w", f, err)}
 	}
 
 	bodyString := string(content)
 
 	homeMatches := homeAdvRE.FindStringSubmatch(bodyString)
 	if homeMatches == nil {
-		return nil, fmt.Errorf("parseSagarinTable: cannot find home advantage line in \"%s\"", f)
+		return nil, []error{fmt.Errorf("parseSagarinTable: cannot find home advantage line in \"%s\"", f)}
 	}
 
 	teamMatches := ratingsRE.FindAllStringSubmatch(bodyString, -1)
 	if teamMatches == nil {
-		return nil, fmt.Errorf("parseSagarinTable: cannot find team lines in \"%s\"", f)
+		return nil, []error{fmt.Errorf("parseSagarinTable: cannot find team lines in \"%s\"", f)}
 	}
 
 	unrankedMatches := unrankedRE.FindStringSubmatch(bodyString)
 	if unrankedMatches == nil {
-		return nil, fmt.Errorf("parseSagarinTable: cannot find unranked team line in \"%s\"", f)
+		return nil, []error{fmt.Errorf("parseSagarinTable: cannot find unranked team line in \"%s\"", f)}
 	}
 
 	advantages := make([]float64, 4)
@@ -189,7 +255,7 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 		var err error
 		advantages[i], err = strconv.ParseFloat(homeMatches[i+1], 64)
 		if err != nil {
-			return nil, fmt.Errorf("parseSagarinTable: cannot parse home advantage string \"%s\" as float: %w", homeMatches[i+1], err)
+			return nil, []error{fmt.Errorf("parseSagarinTable: cannot parse home advantage string \"%s\" as float: %w", homeMatches[i+1], err)}
 		}
 	}
 
@@ -200,6 +266,7 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 	}
 
 	seenTeams := make(map[string]struct{}) // stop if already seen.
+	errs := []error{}
 	for _, match := range teamMatches {
 		name := match[1]
 		if _, ok := seenTeams[name]; ok {
@@ -209,14 +276,15 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 
 		teamRef, exists := lookup[name]
 		if !exists {
-			log.Printf("Warning: team \"%s\" not found in teams. Make sure they only have FBS teams on their schedule!", name)
+			e := firestore.NameNotFoundError{Name: name, NameType: firestore.OtherName}
+			errs = append(errs, e)
 			continue
 		}
 
 		for j := 0; j < 4; j++ {
 			rating, err := strconv.ParseFloat(match[j+2], 64) // name also here
 			if err != nil {
-				return nil, fmt.Errorf("parseSagarinTable: cannot parse rating string \"%s\" as float: %w", match[j+2], err)
+				return nil, []error{fmt.Errorf("parseSagarinTable: cannot parse rating string \"%s\" as float: %w", match[j+2], err)}
 			}
 			m := modelRefs[j]
 			tr := firestore.ModelTeamPoints{
@@ -229,10 +297,14 @@ func parseSagarinTable(f string, lookup firestore.TeamRefsByName, modelRefs []*f
 		}
 	}
 
+	if len(errs) != 0 {
+		return nil, errs
+	}
+
 	for j := 0; j < 4; j++ {
 		rating, err := strconv.ParseFloat(unrankedMatches[j+1], 64) // unranked have no name
 		if err != nil {
-			return nil, fmt.Errorf("parseSagarinTable: cannot parse unranked rating string \"%s\" as float: %w", unrankedMatches[j], err)
+			return nil, []error{fmt.Errorf("parseSagarinTable: cannot parse unranked rating string \"%s\" as float: %w", unrankedMatches[j], err)}
 		}
 		m := modelRefs[j]
 		tr := firestore.ModelTeamPoints{
