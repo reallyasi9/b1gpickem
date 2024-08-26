@@ -27,27 +27,44 @@ const recentColor = "#006B3C"
 // homeAdvRE parses Sagarin output for the home advantage line.
 // Order: RATING, POINTS, GOLDEN_MEAN, RECENT
 var homeAdvRE = regexp.MustCompile(`(?i)` +
-	`\[<font color="` + ratingColor + `">\s*([\-0-9\.]+)</font>\].*?` + // rating
-	`\[<font color="` + predictorColor + `">\s*([\-0-9\.]+)</font>\].*?` + // predictor
-	`\[<font color="` + goldenColor + `">\s*([\-0-9\.]+)</font>\].*?` + // golden
-	`\[<font color="` + recentColor + `">\s*([\-0-9\.]+)</font>\].*?`) // recent
+	`HOME ADVANTAGE=\[\s*([\-0-9\.]+)\]\s+` + // rating
+	`\[\s*([\-0-9\.]+)\]\s+` + // predictor
+	`\[\s*([\-0-9\.]+)\]\s+` + // golden
+	`\[\s*([\-0-9\.]+)\]`) // recent
 
 // ratingsRE parses Sagarin output for each team's rating.
-var ratingsRE = regexp.MustCompile(`(?i)<font color="#000000">\s*` +
+var ratingsRE = regexp.MustCompile(`(?i)` +
 	`\d+\s+` + // rank
-	`(.*?)\s+` + // name
-	`[A]+\s*=</font>` + // league
-	`<font color="` + ratingColor + `">\s*([\-0-9\.]+).*?` + // rating
-	`<font color="` + predictorColor + `">\s*([\-0-9\.]+).*?` + // predictor
-	`<font color="` + goldenColor + `">\s*([\-0-9\.]+).*?` + // golden
-	`<font color="` + recentColor + `">\s*([\-0-9\.]+)`) // recent
+	`([^_\*].*?)\s+` + // name (not UNRATED)
+	`[A]+\s*=\s+` + // league
+	`([\-0-9\.]+)\s+` + // rating
+	`\d+\s+` + // wins
+	`\d+\s+` + // losses
+	`[\-0-9\.]+\(\s*\d+\)\s+` + // strength of schedule (rank)
+	`\d+\s+` + // wins v top 10
+	`\d+\s+\|\s+` + // losses v top 10
+	`\d+\s+` + // wins v top 30
+	`\d+\s+\|\s+` + // losses v top 30
+	`([\-0-9\.]+)\s+\d+\s+\|\s+` + // predictor and rank
+	`([\-0-9\.]+)\s+\d+\s+\|\s+` + // golden and rank
+	`([\-0-9\.]+)\s+\d+\s+\|\s+` + // recent and rank
+	`([\-0-9\.]+)\s+\d+\s+`) // strong recent and rank
 
 // unrankedRE grabs the unranked team points (should be -91, but just in case...)
-var unrankedRE = regexp.MustCompile(`(?i)[_\*]{3}UNRATED[_\*]{3}.*?` +
-	`<font color="` + ratingColor + `">\s*([\-0-9\.]+).*?` + // rating
-	`<font color="` + predictorColor + `">\s*([\-0-9\.]+).*?` + // predictor
-	`<font color="` + goldenColor + `">\s*([\-0-9\.]+).*?` + // golden
-	`<font color="` + recentColor + `">\s*([\-0-9\.]+)`) // recent
+var unrankedRE = regexp.MustCompile(`(?i)[_\*]{3}UNRATED[_\*]{3}\s+` +
+	`[_]+\s*=\s+` + // league
+	`([\-0-9\.]+)\s+` + // rating
+	`\d+\s+` + // wins
+	`\d+\s+` + // losses
+	`[\-0-9\.]+\(\s*\d+\)\s+` + // strength of schedule (rank)
+	`\d+\s+` + // wins v top 10
+	`\d+\s+\|\s+` + // losses v top 10
+	`\d+\s+` + // wins v top 30
+	`\d+\s+\|\s+` + // losses v top 30
+	`([\-0-9\.]+)\s+\d+\s+\|\s+` + // predictor and rank
+	`([\-0-9\.]+)\s+\d+\s+\|\s+` + // golden and rank
+	`([\-0-9\.]+)\s+\d+\s+\|\s+` + // recent and rank
+	`([\-0-9\.]+)\s+\d+\s+`) // strong recent and rank
 
 // sagURL is the URL or file name of the file containing Sagarin ratings.
 const SAG_URL = "https://sagarin.com/sports/cfsend.htm"
