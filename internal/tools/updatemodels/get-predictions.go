@@ -65,28 +65,19 @@ func GetPredictions(ctx *Context) error {
 		return nil
 	}
 
-	batch := ctx.FirestoreClient.Batch()
-	for i := 0; i < len(predictions); i += 500 {
-		ul := i + 500
-		if ul > len(predictions) {
-			ul = len(predictions)
+	batch := ctx.FirestoreClient.BulkWriter(ctx)
+	for _, rp := range predictions {
+		var b_err error
+		if ctx.Force {
+			_, b_err = batch.Set(rp.ref, &rp.pred)
+		} else {
+			_, b_err = batch.Create(rp.ref, &rp.pred)
 		}
-		subset := predictions[i:ul]
-		// err = ctx.FirestoreClient.RunTransaction(ctx, func(c context.Context, t *fs.Transaction) error {
-		for _, rp := range subset {
-			if ctx.Force {
-				// err := t.Set(rp.ref, &rp.pred)
-				batch.Set(rp.ref, &rp.pred)
-			} else {
-				batch.Create(rp.ref, &rp.pred)
-			}
-		}
-		_, err = batch.Commit(ctx)
-
-		if err != nil {
-			return fmt.Errorf("GetPredictions: Writing batch commit to firestore failed: %w", err)
+		if b_err != nil {
+			return fmt.Errorf("GetPredictions: Creating bulk commit failed: %w", err)
 		}
 	}
+	batch.End()
 
 	return nil
 }
