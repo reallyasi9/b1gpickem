@@ -86,11 +86,11 @@ func Simulate(ctx *Context) error {
 	if !sagPerfFound {
 		return fmt.Errorf("Simulate: unable to retrieve most recent Sagarin performance for the week")
 	}
-	log.Printf("Sagarin Ratings performance: %v", sagPerf)
+	log.Println("Sagarin Ratings acquired")
 
 	// Build the probability model
 	model := bts.NewGaussianSpreadModel(sagarinRatings, sagPerf)
-	log.Printf("Built model %v", model)
+	log.Println("Built model")
 
 	// Get schedule from most recent season
 	pypTeamRefs := make([]*firestore.DocumentRef, 0, len(season.PonyTeams))
@@ -119,7 +119,7 @@ func Simulate(ctx *Context) error {
 	log.Printf("Found %d unique games", len(games))
 
 	spreads := predictSpreads(games, model)
-	log.Printf("Made predictions\n%v", spreads)
+	log.Println("Made predictions")
 
 	// Here we go.
 	log.Println("Starting MC")
@@ -146,12 +146,19 @@ func Simulate(ctx *Context) error {
 	for iter := 0; iter < ctx.Iterations; iter++ {
 		teamWins := make(map[string]int)
 		for igame, spread := range spreads {
+			if games[igame].Team(0) == bts.BYE || games[igame].Team(1) == bts.BYE {
+				continue // bye games do not count
+			}
 			outcome := rng.NormFloat64()*sagPerf.StdDev + spread
 			winTeam := 0
 			if outcome < 0 {
 				winTeam = 1
 			}
-			teamWins[string(games[igame].Team(winTeam))]++
+			winningTeam := string(games[igame].Team(winTeam))
+			teamWins[winningTeam]++
+			if teamWins[winningTeam] > 12 {
+				winHists[winningTeam][100]++
+			}
 		}
 		for team := range season.PonyTeams {
 			winHists[team][teamWins[team]]++
