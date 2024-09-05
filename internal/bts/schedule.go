@@ -78,11 +78,17 @@ type weekTeam struct {
 // If two teams (the highest level of sorting of the schedule) play each other, only one of those games is kept.
 func (s Schedule) UniqueGames() []*Game {
 	gamesSeen := make(map[weekTeam]*Game)
-	for team, weeks := range s {
+	for _, weeks := range s {
 		for week, game := range weeks {
+			// Bye games do not count
+			if game.team1 == BYE || game.team2 == BYE {
+				continue
+			}
+			me := weekTeam{week: week, team: game.team1}
 			opponent := weekTeam{week: week, team: game.team2}
-			if _, ok := gamesSeen[opponent]; !ok {
-				me := weekTeam{week: week, team: team}
+			_, okMe := gamesSeen[me]
+			_, okOp := gamesSeen[opponent]
+			if !okMe && !okOp {
 				gamesSeen[me] = game
 			}
 		}
