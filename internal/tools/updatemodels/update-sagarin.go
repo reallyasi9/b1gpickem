@@ -19,11 +19,6 @@ import (
 	"github.com/reallyasi9/b1gpickem/internal/tools/editteams"
 )
 
-const ratingColor = "#9900ff"
-const predictorColor = "#0000ff"
-const goldenColor = "#bb0000"
-const recentColor = "#006B3C"
-
 // homeAdvRE parses Sagarin output for the home advantage line.
 // Order: RATING, POINTS, GOLDEN_MEAN, RECENT
 var homeAdvRE = regexp.MustCompile(`(?i)` +
