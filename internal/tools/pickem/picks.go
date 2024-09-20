@@ -29,7 +29,7 @@ func ExportPicks(ctx *Context) error {
 		return fmt.Errorf("ExportPicks: failed to get picker %s: %w", ctx.Picker, err)
 	}
 
-	picks, picksRef, err := firestore.GetPicks(ctx, weekRef, pickerRef)
+	picks, _, err := firestore.GetPicks(ctx, weekRef, pickerRef)
 	if err != nil {
 		return fmt.Errorf("ExportPicks: failed to get picks: %w", err)
 	}
@@ -42,7 +42,7 @@ func ExportPicks(ctx *Context) error {
 	}
 
 	// Make me some rows!
-	xl, err := makePicksExcelFile(ctx, picks, picksRef, btsPick, btsPickRef)
+	xl, err := makePicksExcelFile(ctx, picks, btsPick, btsPickRef)
 	if err != nil {
 		return fmt.Errorf("ExportPicks: failed to make pick rows: %w", err)
 	}
@@ -110,7 +110,7 @@ func addStreakOverRow(outExcel *excelize.File, sheetName string, row int) error 
 	return nil
 }
 
-func makePicksExcelFile(ctx context.Context, picks []firestore.Pick, pickRefs []*fs.DocumentRef, btsPick firestore.StreakPick, btsPickRef *fs.DocumentRef) (*excelize.File, error) {
+func makePicksExcelFile(ctx context.Context, picks []firestore.Pick, btsPick firestore.StreakPick, btsPickRef *fs.DocumentRef) (*excelize.File, error) {
 	// Make an excel file in memory.
 	outExcel := excelize.NewFile()
 	sheetName := outExcel.GetSheetName(outExcel.GetActiveSheetIndex())

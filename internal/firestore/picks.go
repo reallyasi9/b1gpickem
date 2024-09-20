@@ -201,12 +201,6 @@ func (p Pick) BuildSlateRows(ctx context.Context) ([][]string, error) {
 		return nil, err
 	}
 
-	// Differentiate home and away team mascots if they are the same
-	if homeTeam.Mascot == awayTeam.Mascot {
-		homeTeam.Mascot = fmt.Sprintf("%s (of the %s variety)", homeTeam.Mascot, homeTeam.School)
-		awayTeam.Mascot = fmt.Sprintf("%s (of the %s variety)", awayTeam.Mascot, awayTeam.School)
-	}
-
 	// Game is straight forward
 	var gameSB strings.Builder
 	if sgame.Superdog {
@@ -214,25 +208,25 @@ func (p Pick) BuildSlateRows(ctx context.Context) ([][]string, error) {
 			if sgame.AwayRank > 0 {
 				gameSB.WriteString(fmt.Sprintf("#%d ", sgame.AwayRank))
 			}
-			gameSB.WriteString(awayTeam.School)
+			gameSB.WriteString(awayTeam.ExcelString())
 		} else {
 			if sgame.HomeRank > 0 {
 				gameSB.WriteString(fmt.Sprintf("#%d ", sgame.HomeRank))
 			}
-			gameSB.WriteString(homeTeam.School)
+			gameSB.WriteString(homeTeam.ExcelString())
 		}
 		gameSB.WriteString(" upsets ")
 		if sgame.HomeFavored {
 			if sgame.HomeRank > 0 {
 				gameSB.WriteString(fmt.Sprintf("#%d ", sgame.HomeRank))
 			}
-			gameSB.WriteString(homeTeam.School)
+			gameSB.WriteString(homeTeam.ExcelString())
 			gameSB.WriteString(" on the road")
 		} else {
 			if sgame.AwayRank > 0 {
 				gameSB.WriteString(fmt.Sprintf("#%d ", sgame.AwayRank))
 			}
-			gameSB.WriteString(awayTeam.School)
+			gameSB.WriteString(awayTeam.ExcelString())
 			gameSB.WriteString(" at home")
 		}
 	} else {
@@ -278,9 +272,9 @@ func (p Pick) BuildSlateRows(ctx context.Context) ([][]string, error) {
 	// only pick if the team is not nil (else this is a Superdog game that wasn't picked)
 	if p.PickedTeam != nil {
 		if p.PickedTeam.ID == homeTeamDoc.Ref.ID {
-			line[2] = homeTeam.Mascot
+			line[2] = homeTeam.ExcelString()
 		} else {
-			line[2] = awayTeam.Mascot
+			line[2] = awayTeam.ExcelString()
 		}
 	}
 
@@ -355,7 +349,7 @@ func (sg StreakPick) BuildSlateRows(ctx context.Context) ([][]string, error) {
 			} else {
 				line[0] = tupleStrings[i]
 			}
-			line[2] = team.Mascot
+			line[2] = team.ExcelString()
 			line[3] = fmt.Sprintf("%0.12f", sg.PredictedSpread)
 			line[5] = fmt.Sprintf("%0.4f", sg.PredictedProbability)
 			output = append(output, line)

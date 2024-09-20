@@ -134,6 +134,14 @@ func (t Team) Pretty() string {
 	return l.Render()
 }
 
+func (t Team) ExcelString() string {
+	shortNames := ""
+	if len(t.ShortNames) > 0 {
+		shortNames = fmt.Sprintf(" (%s)", strings.Join(t.ShortNames, ","))
+	}
+	return fmt.Sprintf("%s %s%s", t.School, t.Mascot, shortNames)
+}
+
 // GetTeams returns a collection of teams for a given season.
 func GetTeams(ctx context.Context, season *firestore.DocumentRef) ([]Team, []*firestore.DocumentRef, error) {
 	iter := season.Collection(TEAMS_COLLECTION).Documents(ctx)
