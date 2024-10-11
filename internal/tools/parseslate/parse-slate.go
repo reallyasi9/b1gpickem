@@ -449,7 +449,7 @@ func parseSheet(slurp []byte, tlOther, tlShort firestore.TeamRefsByName, gl fire
 // (?:\#(\d+)\s+)?  # Optional rank for Team 2
 // (.*?)            # Team 2 (away) name in LUKE format
 // \1?\s*$          # Marker for GOTW
-var gameRe = regexp.MustCompile(`^\s*(\*\*)?\s*(?:#\s*(\d+)\s+)?(.*?)\s+((?i:@|at|vs))\s+(?:#\s*(\d+)\s+)?(.*?)(?:\s*\*\*)?\s*$`)
+var gameRe = regexp.MustCompile(`^\s*(\*\*)?\s*(?:#\s*(\d+)\s+)?(.*?)\s+((?i:@|at|vs?\.?))\s+(?:#\s*(\d+)\s+)?(.*?)(?:\s*\*\*)?\s*$`)
 
 var noiseRe = regexp.MustCompile(`\s*(?i:Enter\s+(.*?)\s+iff\s+you\s+predict\s+.*?\s+wins\s+by\s+at\s+least\s+(\d+)\s+points)`)
 
@@ -460,6 +460,7 @@ func parseGame(cell string, tl firestore.TeamRefsByName) (matchup firestore.Matc
 
 	submatches := gameRe.FindStringSubmatch(cell)
 	if len(submatches) == 0 {
+		// log.Printf("[[%s]] failed to match game RE /%s/, skipping", cell, gameRe)
 		return
 	}
 
@@ -508,6 +509,7 @@ func parseGame(cell string, tl firestore.TeamRefsByName) (matchup firestore.Matc
 func parseNoisySpread(cell string, tl firestore.TeamRefsByName) (favorite string, spread int, found bool, err error) {
 	submatches := noiseRe.FindStringSubmatch(cell)
 	if len(submatches) == 0 {
+		// log.Printf("[[%s]] failed to match noisy spread RE /%s/, skipping", cell, noiseRe)
 		return
 	}
 
@@ -534,6 +536,7 @@ func parseNoisySpread(cell string, tl firestore.TeamRefsByName) (favorite string
 func parseDog(cell string, tl firestore.TeamRefsByName) (matchup firestore.Matchup, favorite string, value int, found bool, err error) {
 	submatches := sdRe.FindStringSubmatch(cell)
 	if len(submatches) == 0 {
+		// log.Printf("[[%s]] failed to match superdog RE /%s/, skipping", cell, sdRe)
 		return
 	}
 
