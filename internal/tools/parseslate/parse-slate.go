@@ -485,7 +485,7 @@ func parseGame(cell string, tl firestore.TeamRefsByName) (matchup firestore.Matc
 	}
 	matchup.Away = teamRef.ID
 
-	matchup.Neutral = strings.ToLower(submatches[4]) == "vs"
+	matchup.Neutral = len(submatches[4]) > 0 && strings.ToLower(submatches[4])[0] == 'v'
 
 	if submatches[5] != "" {
 		homeRank, err = strconv.Atoi(submatches[5])
