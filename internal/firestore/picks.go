@@ -215,7 +215,7 @@ func (p Pick) BuildSlateRows(ctx context.Context) ([][]string, error) {
 			}
 			gameSB.WriteString(homeTeam.ExcelString())
 		}
-		gameSB.WriteString(" upsets ")
+		gameSB.WriteString(" upset ")
 		if sgame.HomeFavored {
 			if sgame.HomeRank > 0 {
 				gameSB.WriteString(fmt.Sprintf("#%d ", sgame.HomeRank))
