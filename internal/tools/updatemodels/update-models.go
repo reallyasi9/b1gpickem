@@ -147,6 +147,7 @@ func newPerformanceTable(f string, lookup firestore.ModelRefsByName) (*performan
 	}
 
 	pt := performanceTable{}
+row:
 	for j, row := range rows {
 		values := valueRegex.FindAllStringSubmatch(row, -1)
 		if values == nil {
@@ -202,7 +203,9 @@ func newPerformanceTable(f string, lookup firestore.ModelRefsByName) (*performan
 				return nil, fmt.Errorf("column '%s' in row %d not understood", col, j)
 			}
 			if err != nil {
-				return nil, fmt.Errorf("error parsing column '%s' in row '%d': %w", col, j, err)
+				log.Printf("A model will not be updated due to an error parsing column '%s' in row '%d': %v", col, j, err)
+				// return nil, fmt.Errorf("error parsing column '%s' in row '%d': %w", col, j, err)
+				continue row
 			}
 		}
 		perf.StdDev = math.Sqrt(perf.MSE - math.Pow(perf.Bias, 2.))
